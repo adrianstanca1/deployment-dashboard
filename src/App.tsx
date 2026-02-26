@@ -12,7 +12,7 @@ import { useNotifications } from '@/hooks/useNotifications';
 import Overview from '@/pages/Overview';
 import CommandCenter from '@/pages/CommandCenter';
 import PM2Page from '@/pages/PM2Page';
-import GitHubPage from '@/pages/GitHubPage';
+import GitHubPage from '@/pages/GitHubPageEnhanced';
 import DockerPage from '@/pages/DockerPage';
 import LogsPage from '@/pages/LogsPage';
 import ServerPage from '@/pages/ServerPage';

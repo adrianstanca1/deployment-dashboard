@@ -23,6 +23,7 @@ interface Message {
   provider?: string;
   model?: string;
   capability?: string;
+  toolInfo?: { calls: number };
 }
 
 interface QuickAction {
@@ -298,6 +299,7 @@ What would you like to work on today?`,
         model: data.model,
         capability: data.capability,
         actions: data.actions,
+        toolInfo: data.toolInfo,
         status: 'complete',
       };
 
@@ -463,7 +465,7 @@ What would you like to work on today?`,
           </div>
 
           {/* Model Selector */}
-          {activeProvider?.models?.length > 0 && (
+          {activeProvider && activeProvider.models && activeProvider.models.length > 0 && (
             <select
               value={selectedModel || activeProvider.defaultModel}
               onChange={(e) => setSelectedModel(e.target.value)}
@@ -563,6 +565,15 @@ What would you like to work on today?`,
                         <>
                           <span className="text-dark-600">•</span>
                           <span className="text-xs text-primary-400">{CAPABILITIES.find(c => c.id === message.capability)?.name}</span>
+                        </>
+                      )}
+                      {message.toolInfo && message.toolInfo.calls > 0 && (
+                        <>
+                          <span className="text-dark-600">•</span>
+                          <span className="flex items-center gap-1 text-xs text-emerald-400">
+                            <Wrench size={10} />
+                            {message.toolInfo.calls} tool{message.toolInfo.calls > 1 ? 's' : ''} used
+                          </span>
                         </>
                       )}
                     </div>

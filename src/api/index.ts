@@ -343,7 +343,7 @@ export const settingsAPI = {
     const results = [];
     for (const { key, values } of sections) {
       if (values) {
-        const result = await settingsAPI.updateSection(key, values);
+        const result = await settingsAPI.updateSection(key, values as Record<string, unknown>);
         results.push(result);
       }
     }
