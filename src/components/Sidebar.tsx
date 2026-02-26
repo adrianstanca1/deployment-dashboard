@@ -3,7 +3,7 @@ import { NavLink } from 'react-router-dom';
 import {
   LayoutDashboard, Activity, Github, Container, ScrollText,
   FolderOpen, ChevronLeft, ChevronRight, Terminal, Rocket,
-  BarChart2, Zap, Server, LogOut, User, Bot, Settings,
+  BarChart2, Zap, Server, LogOut, User, Bot, Settings, Key,
 } from 'lucide-react';
 import { useAuth } from '@/contexts/AuthContext';
 
@@ -16,6 +16,7 @@ interface SidebarProps {
 const topNav = [
   { to: '/command-center', icon: LayoutDashboard, label: 'Command Center' },
   { to: '/ai-assistant', icon: Bot, label: 'AI Assistant' },
+  { to: '/ai-settings', icon: Settings, label: 'AI Settings' },
   { to: '/overview', icon: Activity, label: 'Overview' },
   { to: '/pm2', icon: Server, label: 'PM2 Processes' },
   { to: '/monitor', icon: BarChart2, label: 'System Monitor' },

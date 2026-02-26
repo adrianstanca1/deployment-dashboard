@@ -20,6 +20,7 @@ import TerminalPage from '@/pages/TerminalPage';
 import DeployPage from '@/pages/DeployPage';
 import SystemMonitorPage from '@/pages/SystemMonitorPage';
 import AIAssistant from '@/pages/AIAssistant';
+import AISettings from '@/pages/AISettings';
 import EnhancedFileManager from '@/pages/EnhancedFileManager';
 import SettingsPage from '@/pages/SettingsPage';
 import LoginPage from '@/pages/LoginPage';
@@ -83,6 +84,7 @@ function AppShell() {
           <Route path="/deploy" element={<ProtectedRoute><DeployPage /></ProtectedRoute>} />
           <Route path="/monitor" element={<ProtectedRoute><SystemMonitorPage /></ProtectedRoute>} />
           <Route path="/ai-assistant" element={<ProtectedRoute><AIAssistant /></ProtectedRoute>} />
+          <Route path="/ai-settings" element={<ProtectedRoute><AISettings /></ProtectedRoute>} />
           <Route path="/file-manager" element={<ProtectedRoute><EnhancedFileManager /></ProtectedRoute>} />
           <Route path="/settings" element={<ProtectedRoute><SettingsPage /></ProtectedRoute>} />
           <Route path="/login" element={<LoginPage />} />
