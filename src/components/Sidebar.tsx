@@ -3,7 +3,7 @@ import { NavLink } from 'react-router-dom';
 import {
   LayoutDashboard, Activity, Github, Container, ScrollText,
   FolderOpen, ChevronLeft, ChevronRight, Terminal, Rocket,
-  BarChart2, Zap, Server, LogOut, User, Bot,
+  BarChart2, Zap, Server, LogOut, User, Bot, Settings,
 } from 'lucide-react';
 import { useAuth } from '@/contexts/AuthContext';
 
@@ -27,6 +27,7 @@ const bottomNav = [
   { to: '/docker', icon: Container, label: 'Docker' },
   { to: '/logs', icon: ScrollText, label: 'Live Logs' },
   { to: '/server', icon: FolderOpen, label: 'Server Files' },
+  { to: '/settings', icon: Settings, label: 'Settings' },
 ];
 
 export default function Sidebar({ open, onToggle, onOpenPalette }: SidebarProps) {

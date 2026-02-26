@@ -17,6 +17,7 @@ import type {
   LogEntry,
   ServerDirectoryItem,
   SystemStats,
+  DashboardSettings,
 } from '@/types';
 
 const api = axios.create({
@@ -317,3 +318,96 @@ export const deployAPI = {
     return response.data;
   },
 };
+
+// Settings API calls - backend expects section-based updates
+export const settingsAPI = {
+  getSettings: async () => {
+    const response = await api.get<{ success: boolean; data: DashboardSettings }>('/settings');
+    return response.data;
+  },
+
+  // Update a single section (backend expects { section, values })
+  updateSection: async (section: string, values: Record<string, unknown>) => {
+    const response = await api.post<{ success: boolean; message?: string }>('/settings', { section, values });
+    return response.data;
+  },
+
+  // Update all sections by calling updateSection for each
+  updateSettings: async (settings: DashboardSettings) => {
+    const sections = [
+      { key: 'general', values: settings.server }, // server maps to general in backend
+      { key: 'security', values: settings.security },
+      { key: 'integrations', values: { githubUser: settings.github.username, githubToken: settings.github.token } },
+    ];
+
+    const results = [];
+    for (const { key, values } of sections) {
+      if (values) {
+        const result = await settingsAPI.updateSection(key, values);
+        results.push(result);
+      }
+    }
+    return { success: true, results };
+  },
+
+  getHealth: async () => {
+    const response = await api.get<{ success: boolean; settingsFile: { exists: boolean; path: string; writable: boolean } }>('/settings/health');
+    return response.data;
+  },
+};
+
+// Server file API calls
+export interface FileItem {
+  name: string;
+  path: string;
+  type: 'file' | 'directory';
+  size?: number;
+  modified?: string;
+  permissions?: string;
+  owner?: string;
+}
+
+export const serverFileAPI = {
+  browse: async (path: string = '/') => {
+    const response = await api.get<{ success: boolean; data: { path: string; items: FileItem[] } }>(
+      `/server/browse?path=${encodeURIComponent(path)}`
+    );
+    return response.data;
+  },
+
+  create: async (path: string, type: 'file' | 'directory', content?: string) => {
+    const response = await api.post<{ success: boolean; message: string }>('/server/create', {
+      path,
+      type,
+      content,
+    });
+    return response.data;
+  },
+
+  delete: async (path: string) => {
+    const response = await api.delete<{ success: boolean; message: string }>(
+      `/server/delete?path=${encodeURIComponent(path)}`
+    );
+    return response.data;
+  },
+
+  getContent: async (path: string) => {
+    const response = await api.get<{ success: boolean; data: { path: string; content: string; size: number; modified: string } }>(
+      `/server/edit?path=${encodeURIComponent(path)}`
+    );
+    return response.data;
+  },
+
+  saveContent: async (path: string, content: string) => {
+    const response = await api.post<{ success: boolean; message: string }>('/server/edit', {
+      path,
+      content,
+    });
+    return response.data;
+  },
+
+  download: (path: string) => {
+    return `/api/server/download?path=${encodeURIComponent(path)}`;
+  },
+};
+

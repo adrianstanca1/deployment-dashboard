@@ -1,4 +1,5 @@
 import React, { useState, useMemo } from 'react';
+import { useNavigate } from 'react-router-dom';
 import { useQuery } from '@tanstack/react-query';
 import {
   LayoutDashboard, Activity, CheckCircle, XCircle, AlertCircle, Github, Container,
@@ -173,6 +174,7 @@ function AlertBanner({ type, message, action }: { type: 'info' | 'warning' | 'er
 
 export default function CommandCenter() {
   const [searchQuery, setSearchQuery] = useState('');
+  const navigate = useNavigate();
 
   // Fetch all data
   const { data: pm2Data, refetch: refetchPM2 } = useQuery({
@@ -226,10 +228,10 @@ export default function CommandCenter() {
       action: { label: 'Fix Now', onClick: () => console.log('Restart errored') }
     });
   }
-  if (sys?.memory?.percentage > 85) {
+  if ((sys?.memory?.percentage ?? 0) > 85) {
     alerts.push({
       type: 'warning' as const,
-      message: `Memory usage is at ${sys.memory.percentage}%`,
+      message: `Memory usage is at ${sys?.memory?.percentage ?? 0}%`,
     });
   }
 
@@ -255,7 +257,7 @@ export default function CommandCenter() {
           >
             <RefreshCw size={18} />
           </button>
-          <button className="p-2 rounded-lg bg-dark-800 hover:bg-dark-700 text-dark-300 transition-colors">
+          <button onClick={() => navigate('/settings')} title="Settings" className="p-2 rounded-lg bg-dark-800 hover:bg-dark-700 text-dark-300 transition-colors">
             <Settings size={18} />
           </button>
         </div>
@@ -342,7 +344,7 @@ export default function CommandCenter() {
           <ServiceCard
             title="System Health"
             icon={Server}
-            status={sys?.cpu?.usage > 80 ? 'error' : sys?.memory?.percentage > 80 ? 'warning' : 'online'}
+            status={(sys?.cpu?.usage ?? 0) > 80 ? 'error' : (sys?.memory?.percentage ?? 0) > 80 ? 'warning' : 'online'}
             count={`${sys?.cpu?.usage ?? 0}%`}
             subtext={`Memory ${sys?.memory?.percentage ?? 0}% · ${sys?.disk?.percentage ?? 0}% disk`}
             onClick={() => window.location.href = '/monitor'}

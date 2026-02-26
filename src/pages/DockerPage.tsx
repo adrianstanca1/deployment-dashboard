@@ -250,7 +250,7 @@ function InspectDrawer({ container, onClose }: { container: DockerContainer; onC
           <div className="space-y-3">
             <Row label="IP Address" value={ipAddress} mono />
             <Row label="Gateway" value={String((networkSettings?.Gateway as string) || '—')} mono />
-            {networkSettings?.Ports && (
+            {networkSettings?.Ports != null && (
               <div>
                 <div className="text-xs text-dark-500 mb-2 font-medium uppercase tracking-wider">Port Bindings</div>
                 {Object.entries(networkSettings.Ports as Record<string, unknown>).map(([port, bindings]) => (

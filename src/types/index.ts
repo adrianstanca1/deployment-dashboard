@@ -70,6 +70,7 @@ export interface GitHubRepo {
   visibility: 'public' | 'private';
   topics: string[];
   size: number;
+  owner?: { login: string; avatar_url?: string; };
 }
 
 // GitHub Commit
@@ -320,4 +321,57 @@ export interface GitCommandResult {
   error: string | null;
   exitCode: number;
   duration: number;
+}
+
+// Dashboard Settings
+export interface SecuritySettings {
+  dashboardUser: string;
+  dashboardPassword: string;
+  dashboardJwtSecret: string;
+}
+
+export interface GithubSettings {
+  username: string;
+  token: string;
+}
+
+export interface NotificationSettings {
+  slackWebhook: string;
+  emailSmtp: string;
+  emailUser: string;
+  emailPass: string;
+  emailFrom: string;
+}
+
+export interface ServerSettings {
+  publicIp: string;
+  appsBaseUrl: string;
+  allowDirectPortUrls: boolean;
+}
+
+export interface DeploySettings {
+  defaultBranch: string;
+  buildCommand: string;
+  installCommand: string;
+}
+
+export interface TerminalSettings {
+  shell: string;
+  workingDirectory: string;
+}
+
+export interface FeatureSettings {
+  enableAIAssistant: boolean;
+  enableFileManager: boolean;
+  enableTerminal: boolean;
+}
+
+export interface DashboardSettings {
+  security: SecuritySettings;
+  github: GithubSettings;
+  notifications: NotificationSettings;
+  server: ServerSettings;
+  deploy: DeploySettings;
+  terminal: TerminalSettings;
+  features: FeatureSettings;
 }

@@ -142,7 +142,7 @@ export default function QuickActionsPanel({
       const systemStats = systemRes.data;
 
       const allOnline = pm2Summary.errored === 0;
-      const healthyCpu = systemStats.cpu < 80;
+      const healthyCpu = systemStats.cpu.usage < 80;
       const healthyMem = systemStats.memory.percentage < 90;
 
       if (allOnline && healthyCpu && healthyMem) {
@@ -564,4 +564,4 @@ export default function QuickActionsPanel({
 // Re-export types
 // ============================================================================
 
-export type { QuickActionsPanelProps, QuickAction };
+export type { QuickActionsPanelProps };
