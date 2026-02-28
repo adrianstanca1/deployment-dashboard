@@ -1,6 +1,6 @@
 import React, { useState, useMemo } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { useQuery } from '@tanstack/react-query';
+import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import {
   LayoutDashboard, Activity, CheckCircle, XCircle, AlertCircle, Github, Container,
   HardDrive, Cpu, MemoryStick, Globe, Terminal, Rocket, RefreshCw, Play, Square,
@@ -175,6 +175,7 @@ function AlertBanner({ type, message, action }: { type: 'info' | 'warning' | 'er
 export default function CommandCenter() {
   const [searchQuery, setSearchQuery] = useState('');
   const navigate = useNavigate();
+  const queryClient = useQueryClient();
 
   // Fetch all data
   const { data: pm2Data, refetch: refetchPM2 } = useQuery({
@@ -201,6 +202,11 @@ export default function CommandCenter() {
     refetchInterval: 10000,
   });
 
+  const restartErroredMutation = useMutation({
+    mutationFn: pm2API.restartErrored,
+    onSuccess: () => queryClient.invalidateQueries({ queryKey: ['pm2-list'] }),
+  });
+
   const processes = pm2Data?.data ?? [];
   const sys = sysData?.data;
   const repos = reposData?.data ?? [];
@@ -225,7 +231,7 @@ export default function CommandCenter() {
     alerts.push({
       type: 'error' as const,
       message: `${erroredCount} PM2 process${erroredCount > 1 ? 'es' : ''} have errors`,
-      action: { label: 'Fix Now', onClick: () => console.log('Restart errored') }
+      action: { label: 'Fix Now', onClick: () => restartErroredMutation.mutate() }
     });
   }
   if ((sys?.memory?.percentage ?? 0) > 85) {
@@ -287,7 +293,7 @@ export default function CommandCenter() {
           <QuickActionButton
             icon={RefreshCw}
             label="Restart Errored"
-            onClick={() => console.log('restart-errored')}
+            onClick={() => restartErroredMutation.mutate()}
             disabled={erroredCount === 0}
           />
           <QuickActionButton
