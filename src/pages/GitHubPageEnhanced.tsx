@@ -103,69 +103,69 @@ function RepoDetail({ repo }: { repo: GitHubRepo }) {
 
   // Data queries
   const { data: commitsData, isLoading: commitsLoading, error: commitsError } = useQuery({
-    queryKey: ['github-commits', repo.name],
-    queryFn: () => githubAPI.getCommits(repo.name),
+    queryKey: ['github-commits', repo.full_name],
+    queryFn: () => githubAPI.getCommits(repo.owner?.login, repo.name),
     enabled: visitedTabs.has('commits'),
     staleTime: 2 * 60 * 1000,
   });
 
   const { data: branchesData, isLoading: branchesLoading, error: branchesError } = useQuery({
-    queryKey: ['github-branches', repo.name],
-    queryFn: () => githubAPI.getBranches(repo.name),
+    queryKey: ['github-branches', repo.full_name],
+    queryFn: () => githubAPI.getBranches(repo.owner?.login, repo.name),
     enabled: visitedTabs.has('branches'),
     staleTime: 2 * 60 * 1000,
   });
 
   const { data: issuesData, isLoading: issuesLoading, error: issuesError } = useQuery({
-    queryKey: ['github-issues', repo.name, issueState],
-    queryFn: () => githubAPI.getIssues(repo.name, issueState),
+    queryKey: ['github-issues', repo.full_name, issueState],
+    queryFn: () => githubAPI.getIssues(repo.full_name, issueState),
     enabled: visitedTabs.has('issues'),
     staleTime: 2 * 60 * 1000,
   });
 
   const { data: pullsData, isLoading: pullsLoading, error: pullsError } = useQuery({
-    queryKey: ['github-pulls', repo.name, prState],
-    queryFn: () => githubAPI.getPulls(repo.name, prState),
+    queryKey: ['github-pulls', repo.full_name, prState],
+    queryFn: () => githubAPI.getPulls(repo.full_name, prState),
     enabled: visitedTabs.has('pulls'),
     staleTime: 2 * 60 * 1000,
   });
 
   const { data: releasesData, isLoading: releasesLoading, error: releasesError } = useQuery({
-    queryKey: ['github-releases', repo.name],
-    queryFn: () => githubAPI.getReleases(repo.name),
+    queryKey: ['github-releases', repo.full_name],
+    queryFn: () => githubAPI.getReleases(repo.full_name),
     enabled: visitedTabs.has('releases'),
     staleTime: 5 * 60 * 1000,
   });
 
   const { data: actionsData, isLoading: actionsLoading, error: actionsError } = useQuery({
-    queryKey: ['github-actions', repo.name],
-    queryFn: () => githubAPI.getActions(repo.name),
+    queryKey: ['github-actions', repo.full_name],
+    queryFn: () => githubAPI.getActions(repo.full_name),
     enabled: visitedTabs.has('actions'),
     staleTime: 60 * 1000,
   });
 
   const { data: readmeData, isLoading: readmeLoading, error: readmeError } = useQuery({
-    queryKey: ['github-readme', repo.name],
-    queryFn: () => githubAPI.getReadme(repo.name),
+    queryKey: ['github-readme', repo.full_name],
+    queryFn: () => githubAPI.getReadme(repo.full_name),
     enabled: visitedTabs.has('overview'),
     staleTime: 5 * 60 * 1000,
   });
 
   const { data: localStatusData, refetch: refetchLocal } = useQuery({
-    queryKey: ['github-local-status', repo.name],
-    queryFn: () => githubAPI.getLocalStatus(repo.name),
+    queryKey: ['github-local-status', repo.full_name],
+    queryFn: () => githubAPI.getLocalStatus(repo.full_name),
     staleTime: 30 * 1000,
   });
 
   const { data: activityData } = useQuery({
-    queryKey: ['github-commit-activity', repo.name],
-    queryFn: () => githubAPI.getCommitActivity(repo.name),
+    queryKey: ['github-commit-activity', repo.full_name],
+    queryFn: () => githubAPI.getCommitActivity(repo.full_name),
     enabled: visitedTabs.has('overview'),
     staleTime: 5 * 60 * 1000,
   });
 
   const pullLocalMut = useMutation({
-    mutationFn: () => githubAPI.pullLocal(repo.name),
+    mutationFn: () => githubAPI.pullLocal(repo.full_name),
     onSuccess: () => {
       refetchLocal();
       notify({ type: 'success', title: 'Pull successful', message: 'Local repository updated' });

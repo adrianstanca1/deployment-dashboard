@@ -25,15 +25,15 @@ export function CreateBranchModal({ repo, onClose }: ModalProps) {
   const qc = useQueryClient();
 
   const { data: branches } = useQuery({
-    queryKey: ['github-branches', repo.name],
-    queryFn: () => githubAPI.getBranches(repo.name),
+    queryKey: ['github-branches', repo.full_name],
+    queryFn: () => githubAPI.getBranches(repo.owner?.login, repo.name),
   });
 
   const mutation = useMutation({
-    mutationFn: () => githubAPI.createBranch(repo.name, branchName, baseBranch),
+    mutationFn: () => githubAPI.createBranch(repo.full_name, branchName, baseBranch),
     onSuccess: () => {
       notify({ type: 'success', title: `Branch '${branchName}' created successfully!` });
-      qc.invalidateQueries({ queryKey: ['github-branches', repo.name] });
+      qc.invalidateQueries({ queryKey: ['github-branches', repo.full_name] });
       onClose();
     },
     onError: (err: any) => {
@@ -115,15 +115,15 @@ export function TriggerWorkflowModal({ repo, onClose }: ModalProps) {
   const qc = useQueryClient();
 
   const { data: workflows, isLoading } = useQuery({
-    queryKey: ['github-workflows', repo.name],
-    queryFn: () => githubAPI.getWorkflows(repo.name),
+    queryKey: ['github-workflows', repo.full_name],
+    queryFn: () => githubAPI.getWorkflows(repo.full_name),
   });
 
   const mutation = useMutation({
-    mutationFn: () => githubAPI.triggerWorkflow(repo.name, workflowId, branch),
+    mutationFn: () => githubAPI.triggerWorkflow(repo.full_name, workflowId, branch),
     onSuccess: () => {
       notify({ type: 'success', title: `Workflow triggered on ${branch}!`, message: 'Check the Actions tab for progress.' });
-      qc.invalidateQueries({ queryKey: ['github-actions', repo.name] });
+      qc.invalidateQueries({ queryKey: ['github-actions', repo.full_name] });
       onClose();
     },
     onError: (err: any) => {
@@ -211,14 +211,14 @@ export function CreateIssueModal({ repo, onClose }: ModalProps) {
   const qc = useQueryClient();
 
   const mutation = useMutation({
-    mutationFn: () => githubAPI.createIssue(repo.name, title, body, labels.split(',').map(l => l.trim()).filter(Boolean)),
+    mutationFn: () => githubAPI.createIssue(repo.full_name, title, body, labels.split(',').map(l => l.trim()).filter(Boolean)),
     onSuccess: (data) => {
       notify({ 
         type: 'success', 
         title: `Issue #${data.data.issueNumber} created!`,
         message: 'View it on GitHub'
       });
-      qc.invalidateQueries({ queryKey: ['github-issues', repo.name] });
+      qc.invalidateQueries({ queryKey: ['github-issues', repo.full_name] });
       onClose();
     },
     onError: (err: any) => {
@@ -308,19 +308,19 @@ export function CreatePRModal({ repo, onClose }: ModalProps) {
   const qc = useQueryClient();
 
   const { data: branches } = useQuery({
-    queryKey: ['github-branches', repo.name],
-    queryFn: () => githubAPI.getBranches(repo.name),
+    queryKey: ['github-branches', repo.full_name],
+    queryFn: () => githubAPI.getBranches(repo.owner?.login, repo.name),
   });
 
   const mutation = useMutation({
-    mutationFn: () => githubAPI.createPR(repo.name, title, head, base, body),
+    mutationFn: () => githubAPI.createPR(repo.full_name, title, head, base, body),
     onSuccess: (data) => {
       notify({ 
         type: 'success', 
         title: `PR #${data.data.prNumber} created!`,
         message: data.data.html_url
       });
-      qc.invalidateQueries({ queryKey: ['github-pulls', repo.name] });
+      qc.invalidateQueries({ queryKey: ['github-pulls', repo.full_name] });
       onClose();
     },
     onError: (err: any) => {
@@ -422,7 +422,7 @@ export function SyncForkModal({ repo, onClose }: ModalProps) {
   const qc = useQueryClient();
 
   const mutation = useMutation({
-    mutationFn: () => githubAPI.syncFork(repo.name),
+    mutationFn: () => githubAPI.syncFork(repo.full_name),
     onSuccess: (data) => {
       notify({ 
         type: 'success', 
