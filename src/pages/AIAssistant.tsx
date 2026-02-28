@@ -182,6 +182,7 @@ What would you like to work on today?`,
   const [sidebarTab, setSidebarTab] = useState<'commands' | 'automations' | 'history'>('commands');
   const messagesEndRef = useRef<HTMLDivElement>(null);
   const inputRef = useRef<HTMLTextAreaElement>(null);
+  const queryClient = useQueryClient();
 
   // Fetch current server state
   const { data: pm2Data } = useQuery({
@@ -396,8 +397,6 @@ What would you like to work on today?`,
     }]);
     setIsLoading(false);
   };
-
-  const queryClient = useQueryClient();
 
   const currentCapability = CAPABILITIES.find(c => c.id === activeCapability) || CAPABILITIES[0];
   const quickCommands = QUICK_COMMANDS[activeCapability] || QUICK_COMMANDS.default;
