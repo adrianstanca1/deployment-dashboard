@@ -83,6 +83,8 @@ export default function AISettings() {
     }
   });
 
+  const [keyError, setKeyError] = useState<string | null>(null);
+
   // Update key mutation
   const updateKeyMutation = useMutation({
     mutationFn: async ({ provider, apiKey, baseURL }: { provider: string; apiKey?: string; baseURL?: string }) => {
@@ -92,12 +94,18 @@ export default function AISettings() {
         credentials: 'include',
         body: JSON.stringify({ provider, apiKey, baseURL })
       });
-      return res.json();
+      const data = await res.json();
+      if (!data.success) throw new Error(data.error || 'Failed to save key');
+      return data;
     },
     onSuccess: () => {
+      setKeyError(null);
       queryClient.invalidateQueries({ queryKey: ['ai-keys'] });
       setEditingKey(null);
       setNewKeyValue('');
+    },
+    onError: (err: Error) => {
+      setKeyError(err.message);
     }
   });
 
@@ -437,9 +445,13 @@ export default function AISettings() {
                 <h3 className="text-lg font-semibold text-dark-100">API Key Configuration</h3>
               </div>
               <p className="text-sm text-dark-400 mb-4">
-                API keys configured here are stored in memory and will be lost on server restart.
-                For persistent configuration, set environment variables on the server.
+                API keys configured here are persisted to the server's .env file and survive restarts.
               </p>
+              {keyError && (
+                <div className="flex items-center gap-2 mb-3 p-2 bg-red-900/30 border border-red-700 rounded text-sm text-red-400">
+                  <AlertCircle size={14} /> {keyError}
+                </div>
+              )}
 
               <div className="space-y-3">
                 {keysData?.keys && Object.entries(keysData.keys).map(([provider, status]: [string, any]) => (
