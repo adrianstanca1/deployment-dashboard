@@ -177,6 +177,7 @@ What would you like to work on today?`,
   const [activeCapability, setActiveCapability] = useState<string>('default');
   const [showCapabilityPanel, setShowCapabilityPanel] = useState(true);
   const [showProviders, setShowProviders] = useState(false);
+  const availableModels = activeProvider?.models || [];
   const [selectedModel, setSelectedModel] = useState<string>('');
   const [sidebarTab, setSidebarTab] = useState<'commands' | 'automations' | 'history'>('commands');
   const messagesEndRef = useRef<HTMLDivElement>(null);
@@ -227,13 +228,28 @@ What would you like to work on today?`,
 
   const switchProvider = async (providerId: string) => {
     try {
-      await fetch(`/api/ai/providers/${providerId}`, { method: 'POST' });
+      const token = localStorage.getItem('dashboard_token');
+      await fetch(`/api/ai/providers/${providerId}`, {
+        method: 'POST',
+        headers: {
+          'Authorization': `Bearer ${token}`,
+          'Content-Type': 'application/json',
+        },
+      });
       queryClient.invalidateQueries({ queryKey: ['ai-providers'] });
     } catch (error) {
       console.error('Failed to switch provider:', error);
     }
   };
 
+  const exportChat = () => {
+    const blob = new Blob([JSON.stringify(messages, null, 2)], { type: 'application/json' });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = `chat-${new Date().toISOString()}.json`;
+    a.click();
+  };
   const sendMessage = async (content: string, capability = activeCapability) => {
     if (!content.trim()) return;
 
@@ -250,6 +266,12 @@ What would you like to work on today?`,
     setIsLoading(true);
 
     const context = {
+      timestamp: new Date().toISOString(),
+      system: sys ? {
+        cpu: sys.cpu?.usage ?? 0,
+        memory: sys.memory?.percentage ?? 0,
+        disk: sys.disk?.percentage ?? 0,
+      } : null,
       pm2: {
         total: processes.length,
         online: processes.filter((p: any) => p.status === 'online').length,
@@ -257,17 +279,11 @@ What would you like to work on today?`,
         processes: processes.map((p: any) => ({
           name: p.name,
           status: p.status,
-          url: p.url,
-          cpu: p.monit?.cpu,
-          memory: p.monit?.memory,
+          url: p.url || null,
+          cpu: p.monit?.cpu ?? 0,
+          memory: p.monit?.memory ?? 0,
         })),
       },
-      system: sys ? {
-        cpu: sys.cpu?.usage,
-        memory: sys.memory?.percentage,
-        disk: sys.disk?.percentage,
-        uptime: sys.uptime,
-      } : null,
       docker: {
         containers: containers.length,
         running: containers.filter((c: any) => c.state === 'running').length,
@@ -275,9 +291,13 @@ What would you like to work on today?`,
     };
 
     try {
+      const token = localStorage.getItem('dashboard_token');
       const response = await fetch('/api/ai/chat', {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
+        headers: {
+          'Content-Type': 'application/json',
+          'Authorization': `Bearer ${token}`,
+        },
         body: JSON.stringify({
           message: content,
           context,
@@ -305,6 +325,7 @@ What would you like to work on today?`,
 
       setMessages(prev => [...prev, assistantMessage]);
     } catch (error) {
+      console.error('Chat error:', error);
       const errorMessage: Message = {
         id: (Date.now() + 1).toString(),
         role: 'assistant',
@@ -342,6 +363,12 @@ What would you like to work on today?`,
     await new Promise(resolve => setTimeout(resolve, 1500));
 
     const context = {
+      timestamp: new Date().toISOString(),
+      system: sys ? {
+        cpu: sys.cpu?.usage ?? 0,
+        memory: sys.memory?.percentage ?? 0,
+        disk: sys.disk?.percentage ?? 0,
+      } : null,
       pm2: { errored: processes.filter((p: any) => p.status === 'errored').length },
     };
 
