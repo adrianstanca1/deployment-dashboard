@@ -40,7 +40,7 @@ export default function Overview() {
   const { data: aiHealthData, error: aiHealthError } = useQuery({
     queryKey: ['ai-health-overview'],
     queryFn: async () => {
-      const res = await fetch('/api/ai/health', { headers: authHeaders() });
+      const res = await fetch('/api/ai/health', { headers: authHeaders() as HeadersInit });
       return res.json();
     },
     refetchInterval: 10000,

@@ -567,7 +567,7 @@ export function QuickActionsBar({
             onClick={onSyncFork}
             className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-blue-500/20 hover:bg-blue-500/30 text-sm text-blue-300 transition-colors"
           >
-            <Sync size={14} />
+            <RotateCw size={14} />
             Sync Fork
           </button>
         )}

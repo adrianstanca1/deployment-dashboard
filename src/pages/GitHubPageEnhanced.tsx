@@ -105,14 +105,14 @@ function RepoDetail({ repo }: { repo: GitHubRepo }) {
   // Data queries
   const { data: commitsData, isLoading: commitsLoading, error: commitsError } = useQuery({
     queryKey: ['github-commits', repo.full_name],
-    queryFn: () => githubAPI.getCommits(repo.owner?.login, repo.name),
+    queryFn: () => githubAPI.getCommits(repo.owner?.login ?? repo.full_name.split('/')[0], repo.name),
     enabled: visitedTabs.has('commits'),
     staleTime: 2 * 60 * 1000,
   });
 
   const { data: branchesData, isLoading: branchesLoading, error: branchesError } = useQuery({
     queryKey: ['github-branches', repo.full_name],
-    queryFn: () => githubAPI.getBranches(repo.owner?.login, repo.name),
+    queryFn: () => githubAPI.getBranches(repo.owner?.login ?? repo.full_name.split('/')[0], repo.name),
     enabled: visitedTabs.has('branches'),
     staleTime: 2 * 60 * 1000,
   });

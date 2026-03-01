@@ -554,7 +554,7 @@ export default function CommandCenter() {
                     </span>
                   </div>
                   <div className="mt-1 text-xs text-dark-400">{entry.message}</div>
-                  <div className="mt-1 text-[11px] text-dark-500">{formatRelativeTime(entry.createdAt)}</div>
+                  <div className="mt-1 text-[11px] text-dark-500">{formatRelativeTime(new Date(entry.createdAt).toISOString())}</div>
                 </div>
               ))}
             </div>
