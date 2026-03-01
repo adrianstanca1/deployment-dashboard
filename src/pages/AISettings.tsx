@@ -185,7 +185,7 @@ export default function AISettings() {
   const { data: providersResponse } = useQuery({
     queryKey: ['ai-providers'],
     queryFn: async () => {
-      const res = await fetch('/api/ai/providers');
+      const res = await fetch('/api/ai/providers', { headers: authHeaders() });
       return res.json();
     },
     refetchInterval: 15000,
@@ -221,7 +221,7 @@ export default function AISettings() {
   const { data: agentsResponse } = useQuery({
     queryKey: ['ai-agents'],
     queryFn: async () => {
-      const res = await fetch('/api/ai/agents');
+      const res = await fetch('/api/ai/agents', { headers: authHeaders() });
       return res.json();
     },
   });
@@ -229,7 +229,7 @@ export default function AISettings() {
   const { data: toolsResponse } = useQuery({
     queryKey: ['ai-tools'],
     queryFn: async () => {
-      const res = await fetch('/api/ai/tools');
+      const res = await fetch('/api/ai/tools', { headers: authHeaders() });
       return res.json();
     },
   });
