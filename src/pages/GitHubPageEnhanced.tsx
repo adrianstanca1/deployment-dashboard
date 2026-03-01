@@ -14,6 +14,7 @@ import type {
   GitHubRepo, GitHubCommit, GitHubBranch, GitHubIssue,
   GitHubPR, GitHubRelease, GitHubWorkflowRun
 } from '@/types';
+import { GitHubFileBrowser } from '@/components/GitHubEnhanced';
 import {
   CreateBranchModal, TriggerWorkflowModal, CreateIssueModal,
   CreatePRModal, SyncForkModal, QuickActionsBar, CommitActivityChart
@@ -457,6 +458,9 @@ function RepoDetail({ repo }: { repo: GitHubRepo }) {
             {!actionsLoading && !actionsError && actions.length === 0 && <EmptyState message="No workflow runs" />}
           </div>
         )}
+        <div className="mt-4">
+          <GitHubFileBrowser repo={repo} />
+        </div>
       </div>
 
       {/* Modals */}

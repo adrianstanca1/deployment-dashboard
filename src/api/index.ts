@@ -25,6 +25,11 @@ const api = axios.create({
   timeout: 30000,
 });
 
+function normalizeRepoName(ownerOrRepo: string, repoName?: string) {
+  const value = repoName || ownerOrRepo;
+  return value.includes('/') ? value.split('/').pop() || value : value;
+}
+
 // Inject JWT into every request
 api.interceptors.request.use((config) => {
   const token = localStorage.getItem('dashboard_token');
@@ -68,6 +73,14 @@ export const systemAPI = {
   },
   getInfo: async () => {
     const response = await api.get('/server/info');
+    return response.data;
+  },
+  getNetwork: async () => {
+    const response = await api.get('/system/network');
+    return response.data;
+  },
+  getPorts: async () => {
+    const response = await api.get('/system/ports');
     return response.data;
   },
 };
@@ -169,67 +182,87 @@ export const githubAPI = {
     const response = await api.get(`/github/repo/${owner}/${repo}`);
     return response.data;
   },
-  getBranches: async (owner: string, repo: string) => {
-    const response = await api.get(`/github/branches/${owner}/${repo}`);
+  getBranches: async (ownerOrRepo: string, repoName?: string) => {
+    const response = await api.get(`/github/branches/${normalizeRepoName(ownerOrRepo, repoName)}`);
     return response.data;
   },
-  getCommits: async (owner: string, repo: string) => {
-    const response = await api.get(`/github/commits/${owner}/${repo}`);
+  getCommits: async (ownerOrRepo: string, repoName?: string) => {
+    const response = await api.get(`/github/commits/${normalizeRepoName(ownerOrRepo, repoName)}`);
     return response.data;
   },
   deployFromGitHub: async (repoUrl: string, branch = 'main') => {
     const response = await api.post('/github/deploy', { repoUrl, branch });
     return response.data;
   },
-  // Legacy compatibility
   getIssues: async (repo: string, state = 'open') => {
-    return { success: true, data: [] };
+    const response = await api.get(`/github/issues/${normalizeRepoName(repo)}`, { params: { state } });
+    return response.data;
   },
   getPulls: async (repo: string, state = 'open') => {
-    return { success: true, data: [] };
+    const response = await api.get(`/github/pulls/${normalizeRepoName(repo)}`, { params: { state } });
+    return response.data;
   },
   getReleases: async (repo: string) => {
-    return { success: true, data: [] };
+    const response = await api.get(`/github/releases/${normalizeRepoName(repo)}`);
+    return response.data;
   },
   getReadme: async (repo: string) => {
-    return { success: true, data: '' };
+    const response = await api.get(`/github/readme/${normalizeRepoName(repo)}`);
+    return response.data;
   },
   getActions: async (repo: string) => {
-    return { success: true, data: [] };
+    const response = await api.get(`/github/actions/${normalizeRepoName(repo)}`);
+    return response.data;
   },
   getLocalStatus: async (repo: string) => {
-    return { success: true, data: { status: 'unknown' } };
+    const response = await api.get(`/github/local-status/${normalizeRepoName(repo)}`);
+    return response.data;
   },
   pullLocal: async (repo: string) => {
-    return { success: true, data: '' };
+    const response = await api.post(`/github/pull-local/${normalizeRepoName(repo)}`);
+    return response.data;
   },
-  // Extra methods
   syncFork: async (repo: string) => {
-    return { success: true, data: { synced: true } };
+    const response = await api.post(`/github/sync/${normalizeRepoName(repo)}`);
+    return response.data;
   },
   createBranch: async (repo: string, branchName: string, baseBranch = 'main') => {
-    return { success: true, data: { branch: branchName } };
+    const response = await api.post(`/github/create-branch/${normalizeRepoName(repo)}`, { branchName, baseBranch });
+    return response.data;
   },
   triggerWorkflow: async (repo: string, workflowId: string, branch = 'main', inputs: Record<string, string> = {}) => {
-    return { success: true, data: { triggered: true } };
+    const response = await api.post(`/github/trigger-workflow/${normalizeRepoName(repo)}`, { workflowId, branch, inputs });
+    return response.data;
   },
   createIssue: async (repo: string, title: string, body = '', labels: string[] = []) => {
-    return { success: true, data: { issueNumber: 1 } };
+    const response = await api.post(`/github/create-issue/${normalizeRepoName(repo)}`, { title, body, labels });
+    return response.data;
   },
   createPR: async (repo: string, title: string, head: string, base: string, body = '') => {
-    return { success: true, data: { prNumber: 1 } };
+    const response = await api.post(`/github/create-pr/${normalizeRepoName(repo)}`, { title, head, base, body });
+    return response.data;
   },
   mergePR: async (repo: string, pullNumber: number) => {
-    return { success: true, data: { merged: true } };
+    const response = await api.post(`/github/merge-pr/${normalizeRepoName(repo)}/${pullNumber}`);
+    return response.data;
   },
   compareBranches: async (repo: string, base: string, head: string) => {
-    return { success: true, data: { ahead_by: 0, behind_by: 0 } };
+    const response = await api.get(`/github/compare/${normalizeRepoName(repo)}`, { params: { base, head } });
+    return response.data;
   },
   getWorkflows: async (repo: string) => {
-    return { success: true, data: [] };
+    const response = await api.get(`/github/workflows/${normalizeRepoName(repo)}`);
+    return response.data;
+  },
+  getTree: async (repo: string, ref?: string, recursive = true) => {
+    const response = await api.get(`/github/tree/${normalizeRepoName(repo)}`, {
+      params: { ref, recursive },
+    });
+    return response.data;
   },
   getCommitActivity: async (repo: string) => {
-    return { success: true, data: [] };
+    const response = await api.get(`/github/commit-activity/${normalizeRepoName(repo)}`);
+    return response.data;
   },
 };
 
@@ -313,26 +346,24 @@ export interface FileItem {
 
 export const serverFileAPI = {
   browse: async (path: string = '/') => {
-    const response = await api.post('/system/exec', { command: `ls -la ${path}` });
-    return {
-      success: true,
-      data: {
-        path,
-        items: [] as FileItem[],
-      },
-    };
+    const response = await api.get('/server/browse', { params: { path } });
+    return response.data;
   },
   getContent: async (path: string) => {
-    return { success: true, data: { content: '', path, size: 0, modified: '' } };
+    const response = await api.get('/server/edit', { params: { path } });
+    return response.data;
   },
   saveContent: async (path: string, content: string) => {
-    return { success: true, message: 'Saved' };
+    const response = await api.post('/server/edit', { path, content });
+    return response.data;
   },
   create: async (path: string, type: 'file' | 'directory', content?: string) => {
-    return { success: true, message: 'Created' };
+    const response = await api.post('/server/create', { path, type, content });
+    return response.data;
   },
   delete: async (path: string) => {
-    return { success: true, message: 'Deleted' };
+    const response = await api.delete('/server/delete', { data: { path } });
+    return response.data;
   },
   download: (path: string) => `/api/server/download?path=${encodeURIComponent(path)}`,
 };
@@ -353,49 +384,61 @@ export const serverAPI = {
 // Settings API
 export const settingsAPI = {
   getSettings: async () => {
-    return { success: true, data: {} as DashboardSettings };
+    const response = await api.get('/settings');
+    return response.data;
   },
   updateSection: async (section: string, values: Record<string, unknown>) => {
-    return { success: true, message: 'Updated' };
+    const response = await api.post('/settings', { section, values });
+    return response.data;
   },
   updateSettings: async (settings: DashboardSettings) => {
-    return { success: true };
+    const entries = Object.entries(settings as Record<string, unknown>);
+    const results = await Promise.all(entries.map(([section, values]) => api.post('/settings', { section, values })));
+    return { success: results.every((result) => result.data?.success !== false), data: results.map((result) => result.data) };
   },
   getHealth: async () => {
-    return { success: true, settingsFile: { exists: true, path: '', writable: true } };
+    const response = await api.get('/settings/health');
+    return response.data;
   },
 };
 
 // Git API
 export const gitAPI = {
-  execute: async (command: string, cwd = '/var/www') => {
-    return { success: true, data: '' };
+  execute: async (command: string, cwd = '/opt/docker/projects') => {
+    const response = await api.post('/git/command', { command, cwd });
+    return response.data;
   },
 };
 
 // Deploy API
 export const deployAPI = {
   clone: async (repo: string, branch = 'main') => {
-    return { success: true };
+    const response = await api.post('/deploy/clone', { repo: normalizeRepoName(repo), branch });
+    return response.data;
   },
   build: async (name: string) => {
-    return { success: true };
+    const response = await api.post('/deploy/build', { name: normalizeRepoName(name) });
+    return response.data;
   },
   install: async (name: string) => {
-    return { success: true };
+    const response = await api.post('/deploy/install', { name: normalizeRepoName(name) });
+    return response.data;
   },
 };
 
 // PM2 Extra API
 export const pm2ExtraAPI = {
   bulk: async (action: 'restart' | 'stop' | 'start' | 'delete', names: string[]) => {
-    return { success: true };
+    const response = await api.post('/pm2/bulk', { action, names });
+    return response.data;
   },
   restartErrored: async () => {
-    return { success: true };
+    const response = await api.post('/pm2/restart-errored');
+    return response.data;
   },
   save: async () => {
-    return { success: true };
+    const response = await api.post('/pm2/save');
+    return response.data;
   },
 };
 

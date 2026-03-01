@@ -260,7 +260,7 @@ function FileEditorModal({ file, onClose, onSave }: { file: FileItem; onClose: (
 }
 
 export default function EnhancedFileManager() {
-  const [currentPath, setCurrentPath] = useState('/var/www');
+  const [currentPath, setCurrentPath] = useState('/');
   const [searchQuery, setSearchQuery] = useState('');
   const [selectedFiles, setSelectedFiles] = useState<Set<string>>(new Set());
   const [showUploadModal, setShowUploadModal] = useState(false);
@@ -387,7 +387,7 @@ export default function EnhancedFileManager() {
           {/* Breadcrumb */}
           <div className="flex items-center gap-1 text-sm">
             <button
-              onClick={() => navigateTo('/var/www')}
+              onClick={() => navigateTo('/')}
               className="px-2 py-1 rounded text-dark-400 hover:text-dark-200 hover:bg-dark-800"
             >
               <Home size={14} />
@@ -449,7 +449,7 @@ export default function EnhancedFileManager() {
         <div className="flex items-center gap-2">
           <button
             onClick={navigateUp}
-            disabled={currentPath === '/var/www'}
+            disabled={currentPath === '/'}
             className="p-2 rounded-lg text-dark-400 hover:text-dark-200 hover:bg-dark-800 disabled:opacity-50 disabled:cursor-not-allowed"
           >
             <ChevronLeft size={18} />

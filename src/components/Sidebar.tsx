@@ -11,6 +11,7 @@ interface SidebarProps {
   open: boolean;
   onToggle: () => void;
   onOpenPalette: () => void;
+  aiFailureCount?: number;
 }
 
 const topNav = [
@@ -18,7 +19,7 @@ const topNav = [
   { to: '/ai-assistant', icon: Bot, label: 'AI Assistant' },
   { to: '/ai-settings', icon: Settings, label: 'AI Settings' },
   { to: '/overview', icon: Activity, label: 'Overview' },
-  { to: '/pm2', icon: Server, label: 'PM2 Processes' },
+  { to: '/pm2', icon: Server, label: 'Runtime Processes' },
   { to: '/monitor', icon: BarChart2, label: 'System Monitor' },
   { to: '/deploy', icon: Rocket, label: 'Deploy' },
 ];
@@ -31,7 +32,7 @@ const bottomNav = [
   { to: '/settings', icon: Settings, label: 'Settings' },
 ];
 
-export default function Sidebar({ open, onToggle, onOpenPalette }: SidebarProps) {
+export default function Sidebar({ open, onToggle, onOpenPalette, aiFailureCount = 0 }: SidebarProps) {
   const { username, logout } = useAuth();
 
   return (
@@ -78,7 +79,7 @@ export default function Sidebar({ open, onToggle, onOpenPalette }: SidebarProps)
             key={to}
             to={to}
             className={({ isActive }) =>
-              `flex items-center gap-3 px-2 py-2 rounded-lg text-sm transition-all duration-150 ${open ? '' : 'justify-center'} ${
+              `relative flex items-center gap-3 px-2 py-2 rounded-lg text-sm transition-all duration-150 ${open ? '' : 'justify-center'} ${
                 isActive
                   ? 'bg-primary-600/12 text-primary-400'
                   : 'text-dark-400 hover:text-dark-100 hover:bg-dark-800'
@@ -88,6 +89,15 @@ export default function Sidebar({ open, onToggle, onOpenPalette }: SidebarProps)
           >
             <Icon size={16} className="shrink-0" />
             {open && <span>{label}</span>}
+            {to === '/ai-settings' && aiFailureCount > 0 && (
+              <span
+                className={`ml-auto inline-flex min-w-5 items-center justify-center rounded-full bg-red-500/20 px-1.5 py-0.5 text-[10px] font-semibold text-red-300 ${
+                  open ? '' : 'absolute -top-1 -right-1'
+                }`}
+              >
+                {aiFailureCount}
+              </span>
+            )}
           </NavLink>
         ))}
       </nav>

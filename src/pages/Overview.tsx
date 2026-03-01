@@ -1,6 +1,6 @@
 import React from 'react';
 import { useQuery } from '@tanstack/react-query';
-import { Activity, CheckCircle, XCircle, AlertCircle, Github, Container, HardDrive, Cpu, MemoryStick, Globe, ExternalLink } from 'lucide-react';
+import { Activity, CheckCircle, XCircle, AlertCircle, Github, Container, HardDrive, Cpu, MemoryStick, Globe, ExternalLink, Bot, Key } from 'lucide-react';
 import { pm2API, systemAPI, githubAPI, dockerAPI } from '@/api';
 import StatsCard from '@/components/StatsCard';
 import StatusBadge from '@/components/StatusBadge';
@@ -8,6 +8,11 @@ import DeploymentLink from '@/components/DeploymentLink';
 import { formatBytes, formatUptime, formatRelativeTime } from '@/utils';
 
 export default function Overview() {
+  const authHeaders = () => {
+    const token = localStorage.getItem('dashboard_token');
+    return token ? { Authorization: `Bearer ${token}` } : {};
+  };
+
   const { data: pm2Data, error: pm2Error } = useQuery({
     queryKey: ['pm2-list'],
     queryFn: pm2API.getList,
@@ -32,6 +37,15 @@ export default function Overview() {
     refetchInterval: 10000,
   });
 
+  const { data: aiHealthData, error: aiHealthError } = useQuery({
+    queryKey: ['ai-health-overview'],
+    queryFn: async () => {
+      const res = await fetch('/api/ai/health', { headers: authHeaders() });
+      return res.json();
+    },
+    refetchInterval: 10000,
+  });
+
   const processes = pm2Data?.data ?? [];
   const online = processes.filter(p => p.status === 'online').length;
   const errored = processes.filter(p => p.status === 'errored').length;
@@ -40,6 +54,13 @@ export default function Overview() {
   const repos = reposData?.data ?? [];
   const containers = dockerData?.data ?? [];
   const runningContainers = containers.filter(c => c.status?.startsWith('Up')).length;
+  const aiHealth = aiHealthData?.data;
+  const aiProviders = aiHealth?.providers ?? [];
+  const activeAI = aiProviders.find((provider: any) => provider.isActive);
+  const healthyAI = aiProviders.filter((provider: any) => provider.health?.healthy).length;
+  const failingAI = aiProviders.filter((provider: any) => !provider.health?.healthy && provider.health?.status !== 'missing_credentials').length;
+  const recentAudit = aiHealth?.audit ?? [];
+  const criticalFailures = aiProviders.filter((provider: any) => !provider.health?.healthy && provider.health?.status !== 'missing_credentials');
 
   return (
     <div className="p-6 max-w-7xl mx-auto space-y-6">
@@ -48,13 +69,13 @@ export default function Overview() {
         <p className="text-sm text-dark-400 mt-0.5">Real-time server &amp; deployment status</p>
       </div>
 
-      {/* PM2 Stats */}
+      {/* Runtime process stats */}
       <section>
-        <h2 className="text-xs font-semibold text-dark-500 uppercase tracking-wider mb-3">PM2 Processes</h2>
+        <h2 className="text-xs font-semibold text-dark-500 uppercase tracking-wider mb-3">Runtime Processes</h2>
         {pm2Error && (
           <div className="flex items-center gap-2 px-4 py-2 rounded-lg bg-red-500/10 border border-red-500/20 text-red-400 text-sm mb-3">
             <AlertCircle size={14} />
-            Failed to load PM2 processes
+            Failed to load runtime process data
           </div>
         )}
         <div className="grid grid-cols-2 lg:grid-cols-4 gap-3">
@@ -169,6 +190,67 @@ export default function Overview() {
         </section>
       )}
 
+      <section>
+        <h2 className="text-xs font-semibold text-dark-500 uppercase tracking-wider mb-3">AI Runtime</h2>
+        <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
+          <div className="rounded-xl border border-dark-700 bg-dark-900 p-4">
+            <div className="flex items-center gap-2 mb-3">
+              <Bot size={15} className="text-cyan-400" />
+              <span className="text-sm font-medium text-dark-300">Provider Health</span>
+              <span className="ml-auto text-xs text-dark-500">{healthyAI} healthy · {failingAI} failing</span>
+            </div>
+            {aiHealthError && (
+              <div className="flex items-center gap-2 px-4 py-2 rounded-lg bg-red-500/10 border border-red-500/20 text-red-400 text-sm mb-3">
+                <AlertCircle size={14} />
+                Failed to load AI health
+              </div>
+            )}
+            <div className="space-y-2">
+              <div className="flex items-center justify-between text-sm">
+                <span className="text-dark-400">Active provider</span>
+                <span className="text-dark-100">{activeAI?.name || 'Unknown'}</span>
+              </div>
+              {criticalFailures.length > 0 && (
+                <div className="rounded-lg border border-red-500/20 bg-red-500/10 px-3 py-2 text-xs text-red-300">
+                  Critical failures: {criticalFailures.map((provider: any) => provider.name).join(', ')}
+                </div>
+              )}
+              {aiProviders.slice(0, 5).map((provider: any) => (
+                <div key={provider.id} className="rounded-lg bg-dark-800 px-3 py-2 text-sm">
+                  <div className="flex items-center justify-between">
+                    <span className="text-dark-200">{provider.name}</span>
+                    <span className={provider.health?.healthy ? 'text-green-400' : provider.health?.status === 'missing_credentials' ? 'text-yellow-400' : 'text-red-400'}>
+                      {provider.health?.healthy ? 'Healthy' : provider.health?.status === 'missing_credentials' ? 'Missing credentials' : provider.health?.message || 'Failing'}
+                    </span>
+                  </div>
+                  <div className="mt-1 text-xs text-dark-500">
+                    Last success: {provider.health?.lastHealthyAt ? formatRelativeTime(provider.health.lastHealthyAt) : 'never'}
+                  </div>
+                </div>
+              ))}
+            </div>
+          </div>
+
+          <div className="rounded-xl border border-dark-700 bg-dark-900 p-4">
+            <div className="flex items-center gap-2 mb-3">
+              <Key size={15} className="text-cyan-400" />
+              <span className="text-sm font-medium text-dark-300">Recent AI Credential Activity</span>
+            </div>
+            <div className="space-y-2">
+              {recentAudit.slice(0, 4).map((event: any) => (
+                <div key={event.id} className="rounded-lg bg-dark-800 px-3 py-2 text-sm">
+                  <div className="text-dark-100">{event.message}</div>
+                  <div className="text-xs text-dark-500 mt-1">{formatRelativeTime(event.createdAt)}</div>
+                </div>
+              ))}
+              {recentAudit.length === 0 && (
+                <p className="text-dark-500 text-xs">No recent AI credential or provider changes</p>
+              )}
+            </div>
+          </div>
+        </div>
+      </section>
+
       {/* GitHub + Docker summary */}
       <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
         <div className="rounded-xl border border-dark-700 bg-dark-900 p-4">
@@ -221,7 +303,7 @@ export default function Overview() {
 
       {/* Recent processes table */}
       <section>
-        <h2 className="text-xs font-semibold text-dark-500 uppercase tracking-wider mb-3">All PM2 Processes</h2>
+        <h2 className="text-xs font-semibold text-dark-500 uppercase tracking-wider mb-3">All Runtime Processes</h2>
         <div className="rounded-xl border border-dark-700 bg-dark-900 overflow-hidden">
           <table className="w-full text-sm">
             <thead>
@@ -241,6 +323,13 @@ export default function Overview() {
               </tr>
             </thead>
             <tbody>
+              {processes.length === 0 && (
+                <tr>
+                  <td colSpan={7} className="px-4 py-8 text-center text-dark-500">
+                    No PM2-managed processes detected on this host
+                  </td>
+                </tr>
+              )}
               {processes.map((p, i) => (
                 <tr
                   key={p.pm_id}

@@ -1,16 +1,11 @@
-import React, { useState, useEffect } from 'react';
-import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
+import React, { useEffect, useMemo, useState } from 'react';
+import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import {
-  Key, Settings, Server, Bot, Check, X, RefreshCw, Save, Trash2,
-  Plus, ChevronDown, ChevronUp, ExternalLink, AlertCircle, Info,
-  Cpu, Database, GitBranch, FileCode, Activity, Terminal, Globe
+  Activity, AlertCircle, Bot, Check, Cpu, Database, Eye, EyeOff,
+  FileCode, GitBranch, Globe, Key, RefreshCw, Save, Server, Settings,
+  Terminal, Trash2, Wrench, Zap
 } from 'lucide-react';
-
-interface APIKeyStatus {
-  configured: boolean;
-  envVar: string;
-  value?: string;
-}
+import { useNotifications } from '@/hooks/useNotifications';
 
 interface Agent {
   id: string;
@@ -19,132 +14,403 @@ interface Agent {
   tools: string[];
 }
 
-interface Provider {
-  id: string;
-  name: string;
-  enabled: boolean;
-  defaultModel: string;
-  models: string[];
-  isActive: boolean;
-}
-
 interface Tool {
   name: string;
   description: string;
   input_schema: {
-    type: string;
-    properties: Record<string, any>;
-    required?: string[];
+    properties?: Record<string, unknown>;
   };
+}
+
+interface ProviderHealth {
+  healthy: boolean;
+  status: string;
+  message: string;
+  lastCheckedAt: number;
+  lastFailureAt?: number | null;
+  lastRecoveryAt?: number | null;
+  lastHealthyAt?: number | null;
+  consecutiveFailures?: number;
+}
+
+interface ProviderRecord {
+  id: string;
+  name: string;
+  enabled: boolean;
+  defaultModel: string;
+  baseURL?: string | null;
+  models: string[];
+  isActive: boolean;
+  health: ProviderHealth;
+  credentialsMissing: string[];
+}
+
+interface ProviderKeyRecord {
+  provider: string;
+  name: string;
+  configured: boolean;
+  hasStoredSecret?: boolean;
+  fields: {
+    apiKey?: string;
+    baseURL?: string;
+    defaultModel?: string;
+  };
+  envVars: {
+    apiKey?: string[];
+    baseURL?: string[];
+    defaultModel?: string[];
+  };
+  health: ProviderHealth;
+  essentialFields: string[];
+}
+
+interface AIAlert {
+  id: string;
+  provider: string;
+  level: 'info' | 'error';
+  message: string;
+  createdAt: number;
+  details?: { message?: string };
+}
+
+interface AIAuditEvent {
+  id: string;
+  type: string;
+  provider: string;
+  actor: string;
+  message: string;
+  createdAt: number;
+  details?: {
+    changedFields?: string[];
+    clearedFields?: string[];
+    previousProvider?: string;
+    nextProvider?: string;
+    reason?: string;
+    status?: string;
+    providers?: Array<{
+      provider?: string;
+      healthy?: boolean;
+      status?: string;
+      message?: string;
+    }>;
+  };
+}
+
+type TabId = 'providers' | 'credentials' | 'agents' | 'tools';
+
+function formatTime(value?: number | null) {
+  if (!value) return 'never';
+  return new Date(value).toLocaleString();
+}
+
+function healthTone(health?: ProviderHealth) {
+  if (!health) return 'text-dark-500 border-dark-700 bg-dark-800';
+  if (health.healthy) return 'text-green-400 border-green-500/30 bg-green-500/10';
+  if (health.status === 'missing_credentials') return 'text-yellow-400 border-yellow-500/30 bg-yellow-500/10';
+  if (['configuration_error', 'invalid_base_url', 'rate_limited'].includes(health.status)) {
+    return 'text-amber-300 border-amber-500/30 bg-amber-500/10';
+  }
+  if (['invalid_credentials', 'access_denied'].includes(health.status)) {
+    return 'text-orange-300 border-orange-500/30 bg-orange-500/10';
+  }
+  return 'text-red-400 border-red-500/30 bg-red-500/10';
+}
+
+function healthLabel(health?: ProviderHealth) {
+  if (!health) return 'Unknown';
+  if (health.healthy) return 'Healthy';
+
+  const labels: Record<string, string> = {
+    missing_credentials: 'Missing credentials',
+    configuration_error: 'Config error',
+    invalid_credentials: 'Invalid credentials',
+    access_denied: 'Access denied',
+    invalid_base_url: 'Bad base URL',
+    rate_limited: 'Rate limited',
+    provider_unavailable: 'Provider unavailable',
+    timeout: 'Timed out',
+    unreachable: 'Unreachable',
+  };
+
+  return labels[health.status] || 'Failing';
+}
+
+function healthGuidance(health?: ProviderHealth) {
+  if (!health || health.healthy) return '';
+
+  const guidance: Record<string, string> = {
+    missing_credentials: 'Add the missing credential fields before making this provider active.',
+    configuration_error: 'Check the selected model name, API base URL, and any provider-specific gateway settings.',
+    invalid_credentials: 'Replace the stored API key or token for this provider.',
+    access_denied: 'Verify the key permissions, project restrictions, and enabled APIs for this provider.',
+    invalid_base_url: 'Correct the provider base URL or reset it to the default endpoint.',
+    rate_limited: 'Try again later or switch the active provider while this limit clears.',
+    provider_unavailable: 'The upstream provider is returning server errors; use a fallback provider for now.',
+    timeout: 'The provider is too slow to respond from this host; retry or use a fallback.',
+    unreachable: 'The dashboard host cannot reach this provider endpoint; check networking or local service status.',
+  };
+
+  return guidance[health.status] || '';
 }
 
 export default function AISettings() {
   const queryClient = useQueryClient();
-  const [activeTab, setActiveTab] = useState<'providers' | 'agents' | 'tools' | 'keys'>('providers');
-  const [editingKey, setEditingKey] = useState<string | null>(null);
-  const [newKeyValue, setNewKeyValue] = useState('');
+  const { notify } = useNotifications();
+  const [activeTab, setActiveTab] = useState<TabId>('providers');
+  const [forms, setForms] = useState<Record<string, { apiKey: string; baseURL: string; defaultModel: string }>>({});
+  const [showSecrets, setShowSecrets] = useState<Record<string, boolean>>({});
   const [delegateTask, setDelegateTask] = useState('');
-  const [selectedAgent, setSelectedAgent] = useState<string | null>(null);
+  const [selectedAgent, setSelectedAgent] = useState('');
   const [delegateResult, setDelegateResult] = useState<string | null>(null);
 
-  // Fetch API keys status
-  const { data: keysData, refetch: refetchKeys } = useQuery({
-    queryKey: ['ai-keys'],
-    queryFn: async () => {
-      const res = await fetch('/api/ai/keys', { credentials: 'include' });
-      return res.json();
-    }
-  });
+  const authHeaders = () => {
+    const token = localStorage.getItem('dashboard_token');
+    return {
+      'Content-Type': 'application/json',
+      ...(token ? { Authorization: `Bearer ${token}` } : {}),
+    };
+  };
 
-  // Fetch providers
-  const { data: providersData } = useQuery({
+  const downloadAuditLog = async () => {
+    const res = await fetch('/api/ai/audit/export', { headers: authHeaders() });
+    const blob = await res.blob();
+    const url = URL.createObjectURL(blob);
+    const link = document.createElement('a');
+    link.href = url;
+    link.download = `ai-audit-${new Date().toISOString().slice(0, 10)}.json`;
+    link.click();
+    URL.revokeObjectURL(url);
+  };
+
+  const { data: providersResponse } = useQuery({
     queryKey: ['ai-providers'],
     queryFn: async () => {
       const res = await fetch('/api/ai/providers');
       return res.json();
-    }
+    },
+    refetchInterval: 15000,
   });
 
-  // Fetch agents
-  const { data: agentsData, refetch: refetchAgents } = useQuery({
+  const { data: healthResponse } = useQuery({
+    queryKey: ['ai-health'],
+    queryFn: async () => {
+      const res = await fetch('/api/ai/health', { headers: authHeaders() });
+      return res.json();
+    },
+    refetchInterval: 10000,
+  });
+
+  const { data: keysResponse } = useQuery({
+    queryKey: ['ai-keys'],
+    queryFn: async () => {
+      const res = await fetch('/api/ai/keys', { headers: authHeaders() });
+      return res.json();
+    },
+    refetchInterval: 15000,
+  });
+
+  const { data: auditResponse } = useQuery({
+    queryKey: ['ai-audit'],
+    queryFn: async () => {
+      const res = await fetch('/api/ai/audit', { headers: authHeaders() });
+      return res.json();
+    },
+    refetchInterval: 10000,
+  });
+
+  const { data: agentsResponse } = useQuery({
     queryKey: ['ai-agents'],
     queryFn: async () => {
       const res = await fetch('/api/ai/agents');
       return res.json();
-    }
+    },
   });
 
-  // Fetch tools
-  const { data: toolsData } = useQuery({
+  const { data: toolsResponse } = useQuery({
     queryKey: ['ai-tools'],
     queryFn: async () => {
       const res = await fetch('/api/ai/tools');
       return res.json();
-    }
+    },
   });
 
-  const [keyError, setKeyError] = useState<string | null>(null);
+  const providers: ProviderRecord[] = providersResponse?.data ?? [];
+  const providerKeys = (keysResponse?.data ?? {}) as Record<string, ProviderKeyRecord>;
+  const alerts: AIAlert[] = healthResponse?.data?.alerts ?? [];
+  const auditEvents: AIAuditEvent[] = auditResponse?.data ?? healthResponse?.data?.audit ?? [];
+  const agents: Agent[] = agentsResponse?.agents ?? agentsResponse?.data ?? [];
+  const tools: Tool[] = toolsResponse?.tools ?? toolsResponse?.data ?? [];
 
-  // Update key mutation
-  const updateKeyMutation = useMutation({
-    mutationFn: async ({ provider, apiKey, baseURL }: { provider: string; apiKey?: string; baseURL?: string }) => {
+  useEffect(() => {
+    if (!keysResponse?.data) return;
+    setForms((current) => {
+      const next = { ...current };
+      for (const [provider, record] of Object.entries(providerKeys)) {
+        if (!next[provider]) {
+          next[provider] = {
+            apiKey: '',
+            baseURL: record.fields.baseURL ?? '',
+            defaultModel: record.fields.defaultModel ?? '',
+          };
+        }
+      }
+      return next;
+    });
+  }, [keysResponse?.data]);
+
+  const providerMap = useMemo(() => {
+    return providers.reduce<Record<string, ProviderRecord>>((acc, provider) => {
+      acc[provider.id] = provider;
+      return acc;
+    }, {});
+  }, [providers]);
+
+  const saveMutation = useMutation({
+    mutationFn: async (provider: string) => {
+      const providerForm = forms[provider] ?? {};
+      const values: Record<string, string> = {
+        baseURL: providerForm.baseURL ?? '',
+        defaultModel: providerForm.defaultModel ?? '',
+      };
+      if ((providerForm.apiKey ?? '').trim()) {
+        values.apiKey = providerForm.apiKey.trim();
+      }
+      const body = {
+        provider,
+        values,
+      };
       const res = await fetch('/api/ai/keys', {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        credentials: 'include',
-        body: JSON.stringify({ provider, apiKey, baseURL })
+        headers: authHeaders(),
+        body: JSON.stringify(body),
       });
       const data = await res.json();
-      if (!data.success) throw new Error(data.error || 'Failed to save key');
+      if (!data.success) throw new Error(data.error || 'Failed to save provider settings');
       return data;
     },
-    onSuccess: () => {
-      setKeyError(null);
-      queryClient.invalidateQueries({ queryKey: ['ai-keys'] });
-      setEditingKey(null);
-      setNewKeyValue('');
-    },
-    onError: (err: Error) => {
-      setKeyError(err.message);
-    }
-  });
-
-  // Switch provider mutation
-  const switchProviderMutation = useMutation({
-    mutationFn: async (providerId: string) => {
-      const res = await fetch(`/api/ai/providers/${providerId}`, {
-        method: 'POST',
-        credentials: 'include'
-      });
-      return res.json();
-    },
-    onSuccess: () => {
+    onSuccess: (_data, provider) => {
+      notify({ type: 'success', title: `${providerMap[provider]?.name || provider} settings saved` });
+      setForms((current) => ({
+        ...current,
+        [provider]: {
+          ...current[provider],
+          apiKey: '',
+        },
+      }));
       queryClient.invalidateQueries({ queryKey: ['ai-providers'] });
-    }
+      queryClient.invalidateQueries({ queryKey: ['ai-keys'] });
+      queryClient.invalidateQueries({ queryKey: ['ai-health'] });
+      queryClient.invalidateQueries({ queryKey: ['ai-audit'] });
+    },
+    onError: (error: Error) => {
+      notify({ type: 'error', title: 'Failed to save AI settings', message: error.message });
+    },
   });
 
-  // Delegate task mutation
+  const deleteMutation = useMutation({
+    mutationFn: async (provider: string) => {
+      const res = await fetch(`/api/ai/keys/${provider}`, {
+        method: 'DELETE',
+        headers: authHeaders(),
+      });
+      const data = await res.json();
+      if (!data.success) throw new Error(data.error || 'Failed to clear provider settings');
+      return data;
+    },
+    onSuccess: (_data, provider) => {
+      notify({ type: 'warning', title: `${providerMap[provider]?.name || provider} credentials cleared` });
+      setForms((current) => ({
+        ...current,
+        [provider]: { apiKey: '', baseURL: '', defaultModel: '' },
+      }));
+      queryClient.invalidateQueries({ queryKey: ['ai-providers'] });
+      queryClient.invalidateQueries({ queryKey: ['ai-keys'] });
+      queryClient.invalidateQueries({ queryKey: ['ai-health'] });
+      queryClient.invalidateQueries({ queryKey: ['ai-audit'] });
+    },
+    onError: (error: Error) => {
+      notify({ type: 'error', title: 'Failed to clear provider', message: error.message });
+    },
+  });
+
+  const switchMutation = useMutation({
+    mutationFn: async (provider: string) => {
+      const res = await fetch(`/api/ai/providers/${provider}`, {
+        method: 'POST',
+        headers: authHeaders(),
+      });
+      const data = await res.json();
+      if (!data.success) throw new Error(data.error || 'Failed to switch provider');
+      return data;
+    },
+    onSuccess: (data, provider) => {
+      notify({
+        type: data.data?.warning ? 'warning' : 'success',
+        title: `${providerMap[provider]?.name || provider} is now active`,
+        message: data.data?.warning,
+      });
+      queryClient.invalidateQueries({ queryKey: ['ai-providers'] });
+      queryClient.invalidateQueries({ queryKey: ['ai-health'] });
+      queryClient.invalidateQueries({ queryKey: ['ai-audit'] });
+    },
+    onError: (error: Error) => {
+      notify({ type: 'error', title: 'Failed to activate provider', message: error.message });
+    },
+  });
+
+  const checkMutation = useMutation({
+    mutationFn: async (provider?: string) => {
+      const res = await fetch('/api/ai/health/check', {
+        method: 'POST',
+        headers: authHeaders(),
+        body: JSON.stringify(provider ? { providers: [provider] } : {}),
+      });
+      const data = await res.json();
+      if (!data.success) throw new Error(data.error || 'Health check failed');
+      return data;
+    },
+    onSuccess: (_data, provider) => {
+      notify({ type: 'info', title: provider ? `Checked ${providerMap[provider]?.name || provider}` : 'Checked all AI providers' });
+      queryClient.invalidateQueries({ queryKey: ['ai-providers'] });
+      queryClient.invalidateQueries({ queryKey: ['ai-health'] });
+      queryClient.invalidateQueries({ queryKey: ['ai-keys'] });
+      queryClient.invalidateQueries({ queryKey: ['ai-audit'] });
+    },
+    onError: (error: Error) => {
+      notify({ type: 'error', title: 'Provider health check failed', message: error.message });
+    },
+  });
+
   const delegateMutation = useMutation({
     mutationFn: async ({ agentId, task }: { agentId: string; task: string }) => {
       const res = await fetch('/api/ai/delegate', {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        credentials: 'include',
-        body: JSON.stringify({ agentId, task })
+        headers: authHeaders(),
+        body: JSON.stringify({ agentId, task }),
       });
-      return res.json();
+      const data = await res.json();
+      if (!data.success) throw new Error(data.error || 'Delegation failed');
+      return data;
     },
     onSuccess: (data) => {
-      setDelegateResult(data.response || data.error || 'Task completed');
-    }
+      setDelegateResult(data.response || data.data?.response || 'Task completed');
+      notify({ type: 'success', title: 'Agent task completed' });
+    },
+    onError: (error: Error) => {
+      notify({ type: 'error', title: 'Agent task failed', message: error.message });
+    },
   });
 
-  const handleSaveKey = (provider: string) => {
-    if (provider === 'ollama') {
-      updateKeyMutation.mutate({ provider, baseURL: newKeyValue });
-    } else {
-      updateKeyMutation.mutate({ provider, apiKey: newKeyValue });
-    }
+  const updateForm = (provider: string, field: 'apiKey' | 'baseURL' | 'defaultModel', value: string) => {
+    setForms((current) => ({
+      ...current,
+      [provider]: {
+        apiKey: current[provider]?.apiKey ?? '',
+        baseURL: current[provider]?.baseURL ?? '',
+        defaultModel: current[provider]?.defaultModel ?? '',
+        [field]: value,
+      },
+    }));
   };
 
   const getAgentIcon = (agentId: string) => {
@@ -157,39 +423,42 @@ export default function AISettings() {
     return <Bot size={16} />;
   };
 
-  const tabs = [
+  const tabs: Array<{ id: TabId; label: string; icon: React.ElementType }> = [
     { id: 'providers', label: 'Providers', icon: Globe },
+    { id: 'credentials', label: 'Credentials', icon: Key },
     { id: 'agents', label: 'Agents', icon: Bot },
     { id: 'tools', label: 'Tools', icon: Terminal },
-    { id: 'keys', label: 'API Keys', icon: Key },
   ];
 
   return (
     <div className="flex flex-col h-full">
-      {/* Header */}
       <div className="border-b border-dark-800 bg-dark-900 px-6 py-4">
-        <div className="flex items-center justify-between">
+        <div className="flex items-center justify-between gap-4">
           <div>
             <h1 className="text-2xl font-bold text-dark-100 flex items-center gap-3">
               <Settings className="text-cyan-400" size={28} />
               AI Settings
             </h1>
-            <p className="text-dark-400 mt-1">Configure AI providers, agents, and tools</p>
+            <p className="text-dark-400 mt-1">Read and write provider credentials live, test them, and recover from failures during active sessions.</p>
           </div>
+          <button
+            onClick={() => checkMutation.mutate(undefined)}
+            className="flex items-center gap-2 px-4 py-2 rounded-lg bg-dark-800 hover:bg-dark-700 border border-dark-700 text-dark-200"
+          >
+            <RefreshCw size={16} className={checkMutation.isPending ? 'animate-spin' : ''} />
+            Check All
+          </button>
         </div>
       </div>
 
-      {/* Tabs */}
       <div className="border-b border-dark-800 bg-dark-900 px-6">
         <div className="flex gap-1">
-          {tabs.map(tab => (
+          {tabs.map((tab) => (
             <button
               key={tab.id}
-              onClick={() => setActiveTab(tab.id as any)}
+              onClick={() => setActiveTab(tab.id)}
               className={`flex items-center gap-2 px-4 py-3 text-sm font-medium border-b-2 transition-colors ${
-                activeTab === tab.id
-                  ? 'border-cyan-400 text-cyan-400'
-                  : 'border-transparent text-dark-400 hover:text-dark-200'
+                activeTab === tab.id ? 'border-cyan-400 text-cyan-400' : 'border-transparent text-dark-400 hover:text-dark-200'
               }`}
             >
               <tab.icon size={16} />
@@ -199,345 +468,303 @@ export default function AISettings() {
         </div>
       </div>
 
-      {/* Content */}
-      <div className="flex-1 overflow-auto p-6">
-        {/* Providers Tab */}
-        {activeTab === 'providers' && (
-          <div className="space-y-4">
-            <div className="bg-dark-900 rounded-lg border border-dark-800 p-4">
-              <h3 className="text-lg font-semibold text-dark-100 mb-4">AI Providers</h3>
-              <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-3">
-                {providersData?.data?.map((provider: Provider) => (
-                  <div
-                    key={provider.id}
-                    className={`p-4 rounded-lg border transition-all ${
-                      provider.isActive
-                        ? 'border-cyan-500 bg-cyan-500/10'
-                        : 'border-dark-700 bg-dark-800 hover:border-dark-600'
-                    }`}
-                  >
-                    <div className="flex items-center justify-between mb-2">
-                      <div className="flex items-center gap-2">
-                        <Globe size={18} className={provider.enabled ? 'text-green-400' : 'text-dark-500'} />
-                        <span className="font-medium text-dark-100">{provider.name}</span>
-                      </div>
-                      {provider.isActive && (
-                        <span className="px-2 py-0.5 text-xs rounded-full bg-cyan-500/20 text-cyan-400">
-                          Active
-                        </span>
-                      )}
-                    </div>
-                    <p className="text-sm text-dark-400 mb-3">
-                      {provider.id === 'local' ? 'Ollama running locally' :
-                       provider.id === 'cloud' ? 'Dashboard-managed cloud AI' :
-                       provider.enabled ? 'Ready to use' : 'Not configured'}
-                    </p>
-                    <div className="flex items-center gap-2">
-                      <select
-                        className="flex-1 bg-dark-700 border border-dark-600 rounded px-2 py-1 text-sm text-dark-200"
-                        value={provider.defaultModel}
-                        disabled={!provider.enabled}
-                      >
-                        {provider.models?.map((model: string) => (
-                          <option key={model} value={model}>{model}</option>
-                        ))}
-                      </select>
-                      <button
-                        onClick={() => switchProviderMutation.mutate(provider.id)}
-                        disabled={provider.isActive || !provider.enabled}
-                        className={`px-3 py-1 text-sm rounded ${
-                          provider.isActive
-                            ? 'bg-dark-700 text-dark-400 cursor-not-allowed'
-                            : 'bg-cyan-600 hover:bg-cyan-500 text-white'
-                        }`}
-                      >
-                        {provider.isActive ? 'Active' : 'Switch'}
-                      </button>
-                    </div>
-                  </div>
-                ))}
-              </div>
+      <div className="flex-1 overflow-auto p-6 space-y-6">
+        <div className="rounded-xl border border-dark-800 bg-dark-900 p-4">
+          <div className="flex items-center gap-2 mb-3 text-sm font-medium text-dark-200">
+            <AlertCircle size={16} className="text-yellow-400" />
+            Recent AI Alerts
+          </div>
+          {alerts.length === 0 ? (
+            <p className="text-sm text-dark-500">No recent AI provider alerts.</p>
+          ) : (
+            <div className="space-y-2">
+              {alerts.slice(0, 5).map((alert) => (
+                <div key={alert.id} className={`rounded-lg border px-3 py-2 text-sm ${alert.level === 'info' ? 'border-blue-500/30 bg-blue-500/10 text-blue-300' : 'border-red-500/30 bg-red-500/10 text-red-300'}`}>
+                  <div className="font-medium">{alert.message}</div>
+                  <div className="text-xs opacity-80">{alert.details?.message || 'No extra detail'} · {formatTime(alert.createdAt)}</div>
+                </div>
+              ))}
             </div>
+          )}
+        </div>
 
-            <div className="bg-dark-900 rounded-lg border border-dark-800 p-4">
-              <h3 className="text-lg font-semibold text-dark-100 mb-4">Tool Support by Provider</h3>
-              <div className="overflow-x-auto">
-                <table className="w-full text-sm">
-                  <thead>
-                    <tr className="border-b border-dark-700">
-                      <th className="text-left py-2 px-3 text-dark-400 font-medium">Provider</th>
-                      <th className="text-left py-2 px-3 text-dark-400 font-medium">Function Calling</th>
-                      <th className="text-left py-2 px-3 text-dark-400 font-medium">Tools Available</th>
-                      <th className="text-left py-2 px-3 text-dark-400 font-medium">Status</th>
-                    </tr>
-                  </thead>
-                  <tbody>
-                    <tr className="border-b border-dark-800">
-                      <td className="py-2 px-3 text-dark-200">Anthropic (Claude)</td>
-                      <td className="py-2 px-3 text-green-400">✓ Full</td>
-                      <td className="py-2 px-3 text-dark-300">24 tools</td>
-                      <td className="py-2 px-3">
-                        <span className="text-green-400">Ready</span>
-                      </td>
-                    </tr>
-                    <tr className="border-b border-dark-800">
-                      <td className="py-2 px-3 text-dark-200">OpenAI</td>
-                      <td className="py-2 px-3 text-green-400">✓ Full</td>
-                      <td className="py-2 px-3 text-dark-300">24 tools</td>
-                      <td className="py-2 px-3">
-                        {providersData?.data?.find((p: Provider) => p.id === 'openai')?.enabled ? (
-                          <span className="text-green-400">Ready</span>
-                        ) : (
-                          <span className="text-yellow-400">Configure API Key</span>
-                        )}
-                      </td>
-                    </tr>
-                    <tr className="border-b border-dark-800">
-                      <td className="py-2 px-3 text-dark-200">Google (Gemini)</td>
-                      <td className="py-2 px-3 text-yellow-400">⚠ Limited</td>
-                      <td className="py-2 px-3 text-dark-300">-</td>
-                      <td className="py-2 px-3">
-                        <span className="text-yellow-400">Coming Soon</span>
-                      </td>
-                    </tr>
-                    <tr className="border-b border-dark-800">
-                      <td className="py-2 px-3 text-dark-200">Local (Ollama)</td>
-                      <td className="py-2 px-3 text-red-400">✗ None</td>
-                      <td className="py-2 px-3 text-dark-300">Rule-based only</td>
-                      <td className="py-2 px-3">
-                        <span className="text-dark-400">Fallback mode</span>
-                      </td>
-                    </tr>
-                  </tbody>
-                </table>
-              </div>
+        <div className="rounded-xl border border-dark-800 bg-dark-900 p-4">
+          <div className="flex items-center justify-between gap-3 mb-3">
+            <div className="flex items-center gap-2 text-sm font-medium text-dark-200">
+              <Key size={16} className="text-cyan-400" />
+              Credential Audit Trail
             </div>
+            <button
+              onClick={downloadAuditLog}
+              className="rounded-lg border border-dark-700 bg-dark-800 px-3 py-1.5 text-xs text-dark-200 hover:bg-dark-700"
+            >
+              Export JSON
+            </button>
+          </div>
+          {auditEvents.length === 0 ? (
+            <p className="text-sm text-dark-500">No AI credential or provider changes have been recorded in this session.</p>
+          ) : (
+            <div className="space-y-2">
+              {auditEvents.slice(0, 8).map((event) => (
+                <div key={event.id} className="rounded-lg border border-dark-700 bg-dark-800 px-3 py-2 text-sm">
+                  <div className="font-medium text-dark-100">{event.message}</div>
+                  <div className="mt-1 text-xs text-dark-400">
+                    {event.details?.changedFields?.length ? `Fields: ${event.details.changedFields.join(', ')} · ` : ''}
+                    {event.details?.clearedFields?.length ? `Cleared: ${event.details.clearedFields.join(', ')} · ` : ''}
+                    {event.details?.reason ? `${event.details.reason} · ` : ''}
+                    {event.details?.status ? `${event.details.status} · ` : ''}
+                    {formatTime(event.createdAt)}
+                  </div>
+                </div>
+              ))}
+            </div>
+          )}
+        </div>
+
+        {activeTab === 'providers' && (
+          <div className="grid gap-4 lg:grid-cols-2">
+            {providers.map((provider) => (
+              <div key={provider.id} className="rounded-xl border border-dark-800 bg-dark-900 p-4 space-y-4">
+                <div className="flex items-start justify-between gap-3">
+                  <div>
+                    <div className="flex items-center gap-2">
+                      <Globe size={18} className="text-cyan-400" />
+                      <h2 className="text-lg font-semibold text-dark-100">{provider.name}</h2>
+                      {provider.isActive && <span className="rounded-full bg-cyan-500/20 px-2 py-0.5 text-xs text-cyan-400">Active</span>}
+                    </div>
+                    <p className="mt-1 text-sm text-dark-400">{provider.baseURL || 'Managed internally by the dashboard'}</p>
+                  </div>
+                  <div className={`rounded-lg border px-2 py-1 text-xs ${healthTone(provider.health)}`}>
+                    {healthLabel(provider.health)}
+                  </div>
+                </div>
+
+                <div className="grid grid-cols-2 gap-3 text-sm">
+                  <div className="rounded-lg bg-dark-800 px-3 py-2">
+                    <div className="text-dark-500">Model</div>
+                    <div className="mt-1 text-dark-100">{provider.defaultModel || 'unset'}</div>
+                  </div>
+                  <div className="rounded-lg bg-dark-800 px-3 py-2">
+                    <div className="text-dark-500">Last check</div>
+                    <div className="mt-1 text-dark-100">{formatTime(provider.health?.lastCheckedAt)}</div>
+                  </div>
+                  <div className="rounded-lg bg-dark-800 px-3 py-2">
+                    <div className="text-dark-500">Last success</div>
+                    <div className="mt-1 text-dark-100">{formatTime(provider.health?.lastHealthyAt)}</div>
+                  </div>
+                  <div className="rounded-lg bg-dark-800 px-3 py-2">
+                    <div className="text-dark-500">Last recovery</div>
+                    <div className="mt-1 text-dark-100">{formatTime(provider.health?.lastRecoveryAt)}</div>
+                  </div>
+                </div>
+
+                <div className="rounded-lg bg-dark-800 px-3 py-2 text-sm">
+                  <div className="text-dark-500">Health detail</div>
+                  <div className="mt-1 text-dark-100">{provider.health?.message || 'No data yet'}</div>
+                  {healthGuidance(provider.health) && (
+                    <div className="mt-2 text-xs text-dark-400">{healthGuidance(provider.health)}</div>
+                  )}
+                  {provider.credentialsMissing.length > 0 && (
+                    <div className="mt-1 text-yellow-400 text-xs">Missing: {provider.credentialsMissing.join(', ')}</div>
+                  )}
+                </div>
+
+                <div className="flex flex-wrap gap-2">
+                  <button
+                    onClick={() => switchMutation.mutate(provider.id)}
+                    disabled={!provider.enabled || switchMutation.isPending}
+                    className="rounded-lg bg-cyan-600 px-3 py-2 text-sm text-white hover:bg-cyan-500 disabled:cursor-not-allowed disabled:bg-dark-700 disabled:text-dark-500"
+                  >
+                    {provider.isActive ? 'Active' : 'Make Active'}
+                  </button>
+                  <button
+                    onClick={() => checkMutation.mutate(provider.id)}
+                    disabled={checkMutation.isPending}
+                    className="rounded-lg border border-dark-700 bg-dark-800 px-3 py-2 text-sm text-dark-200 hover:bg-dark-700"
+                  >
+                    Test Connection
+                  </button>
+                </div>
+              </div>
+            ))}
           </div>
         )}
 
-        {/* Agents Tab */}
-        {activeTab === 'agents' && (
-          <div className="space-y-6">
-            <div className="bg-dark-900 rounded-lg border border-dark-800 p-4">
-              <h3 className="text-lg font-semibold text-dark-100 mb-4">Available Agents</h3>
-              <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-3">
-                {agentsData?.agents?.map((agent: Agent) => (
-                  <div
-                    key={agent.id}
-                    className="p-4 rounded-lg border border-dark-700 bg-dark-800"
-                  >
-                    <div className="flex items-center gap-2 mb-2">
-                      <div className="p-2 rounded-lg bg-dark-700 text-cyan-400">
-                        {getAgentIcon(agent.id)}
-                      </div>
-                      <span className="font-medium text-dark-100">{agent.name}</span>
-                    </div>
-                    <p className="text-sm text-dark-400 mb-3">{agent.description}</p>
-                    <div className="flex flex-wrap gap-1 mb-3">
-                      {agent.tools.slice(0, 3).map((tool: string) => (
-                        <span key={tool} className="px-2 py-0.5 text-xs rounded bg-dark-700 text-dark-300">
-                          {tool}
-                        </span>
+        {activeTab === 'credentials' && (
+          <div className="space-y-4">
+            {Object.entries(providerKeys).map(([providerId, record]) => (
+              <div key={providerId} className="rounded-xl border border-dark-800 bg-dark-900 p-4 space-y-4">
+                <div className="flex items-start justify-between gap-4">
+                  <div>
+                    <h2 className="text-lg font-semibold text-dark-100">{record.name}</h2>
+                    <p className="text-sm text-dark-400">
+                      Changes are written immediately to the backend runtime and persisted for future sessions.
+                    </p>
+                    <div className="mt-2 flex flex-wrap gap-2 text-xs text-dark-500">
+                      {[...(record.envVars.apiKey ?? []), ...(record.envVars.baseURL ?? []), ...(record.envVars.defaultModel ?? [])].map((envVar) => (
+                        <span key={envVar} className="rounded bg-dark-800 px-2 py-0.5">{envVar}</span>
                       ))}
-                      {agent.tools.length > 3 && (
-                        <span className="px-2 py-0.5 text-xs rounded bg-dark-700 text-dark-400">
-                          +{agent.tools.length - 3}
-                        </span>
-                      )}
                     </div>
-                    <button
-                      onClick={() => setSelectedAgent(agent.id)}
-                      className="w-full py-2 text-sm rounded bg-dark-700 hover:bg-dark-600 text-dark-200 transition-colors"
-                    >
-                      Use Agent
-                    </button>
                   </div>
-                ))}
-              </div>
-            </div>
+                  <div className={`rounded-lg border px-2 py-1 text-xs ${healthTone(record.health)}`}>
+                    {healthLabel(record.health)}
+                  </div>
+                </div>
 
-            {/* Delegate Task Panel */}
-            <div className="bg-dark-900 rounded-lg border border-dark-800 p-4">
-              <h3 className="text-lg font-semibold text-dark-100 mb-4">Delegate Task to Agent</h3>
-              <div className="space-y-4">
-                <div>
-                  <label className="block text-sm text-dark-400 mb-2">Select Agent</label>
-                  <select
-                    value={selectedAgent || ''}
-                    onChange={(e) => setSelectedAgent(e.target.value)}
-                    className="w-full bg-dark-800 border border-dark-700 rounded-lg px-3 py-2 text-dark-200"
-                  >
-                    <option value="">Choose an agent...</option>
-                    {agentsData?.agents?.map((agent: Agent) => (
-                      <option key={agent.id} value={agent.id}>{agent.name}</option>
-                    ))}
-                  </select>
-                </div>
-                <div>
-                  <label className="block text-sm text-dark-400 mb-2">Task Description</label>
-                  <textarea
-                    value={delegateTask}
-                    onChange={(e) => setDelegateTask(e.target.value)}
-                    placeholder="Describe what you want the agent to do..."
-                    className="w-full bg-dark-800 border border-dark-700 rounded-lg px-3 py-2 text-dark-200 h-24 resize-none"
-                  />
-                </div>
-                <button
-                  onClick={() => delegateMutation.mutate({ agentId: selectedAgent!, task: delegateTask })}
-                  disabled={!selectedAgent || !delegateTask || delegateMutation.isPending}
-                  className="flex items-center gap-2 px-4 py-2 bg-cyan-600 hover:bg-cyan-500 disabled:bg-dark-700 disabled:text-dark-400 text-white rounded-lg transition-colors"
-                >
-                  {delegateMutation.isPending ? <RefreshCw size={16} className="animate-spin" /> : <Bot size={16} />}
-                  Execute Task
-                </button>
-                {delegateResult && (
-                  <div className="mt-4 p-4 bg-dark-800 rounded-lg border border-dark-700">
-                    <h4 className="text-sm font-medium text-dark-300 mb-2">Result</h4>
-                    <pre className="text-sm text-dark-200 whitespace-pre-wrap">{delegateResult}</pre>
+                <div className="grid gap-4 lg:grid-cols-3">
+                  <div>
+                    <label className="mb-1 block text-xs text-dark-500">API Credential</label>
+                    <div className="flex gap-2">
+                      <input
+                        type={showSecrets[providerId] ? 'text' : 'password'}
+                        value={forms[providerId]?.apiKey ?? ''}
+                        onChange={(e) => updateForm(providerId, 'apiKey', e.target.value)}
+                        placeholder={record.hasStoredSecret ? 'Enter a new key to replace the stored secret' : (record.essentialFields.includes('apiKey') ? 'Required' : 'Optional')}
+                        className="w-full rounded-lg border border-dark-700 bg-dark-800 px-3 py-2 text-sm text-dark-100"
+                        disabled={!record.envVars.apiKey?.length}
+                      />
+                      {record.envVars.apiKey?.length ? (
+                        <button
+                          onClick={() => setShowSecrets((current) => ({ ...current, [providerId]: !current[providerId] }))}
+                          className="rounded-lg border border-dark-700 bg-dark-800 px-3 text-dark-300 hover:bg-dark-700"
+                        >
+                          {showSecrets[providerId] ? <EyeOff size={16} /> : <Eye size={16} />}
+                        </button>
+                      ) : null}
+                    </div>
                   </div>
+
+                  <div>
+                    <label className="mb-1 block text-xs text-dark-500">Base URL / Gateway</label>
+                    <input
+                      type="text"
+                      value={forms[providerId]?.baseURL ?? ''}
+                      onChange={(e) => updateForm(providerId, 'baseURL', e.target.value)}
+                      placeholder="https://..."
+                      className="w-full rounded-lg border border-dark-700 bg-dark-800 px-3 py-2 text-sm text-dark-100"
+                      disabled={!record.envVars.baseURL?.length}
+                    />
+                  </div>
+
+                  <div>
+                    <label className="mb-1 block text-xs text-dark-500">Default Model</label>
+                    <input
+                      type="text"
+                      value={forms[providerId]?.defaultModel ?? ''}
+                      onChange={(e) => updateForm(providerId, 'defaultModel', e.target.value)}
+                      placeholder="model name"
+                      className="w-full rounded-lg border border-dark-700 bg-dark-800 px-3 py-2 text-sm text-dark-100"
+                    />
+                  </div>
+                </div>
+
+                <div className="flex flex-wrap gap-2">
+                  <button
+                    onClick={() => saveMutation.mutate(providerId)}
+                    disabled={saveMutation.isPending}
+                    className="flex items-center gap-2 rounded-lg bg-green-600 px-3 py-2 text-sm text-white hover:bg-green-500"
+                  >
+                    <Save size={14} />
+                    Save / Replace
+                  </button>
+                  <button
+                    onClick={() => checkMutation.mutate(providerId)}
+                    disabled={checkMutation.isPending}
+                    className="flex items-center gap-2 rounded-lg border border-dark-700 bg-dark-800 px-3 py-2 text-sm text-dark-200 hover:bg-dark-700"
+                  >
+                    <Zap size={14} />
+                    Test
+                  </button>
+                  <button
+                    onClick={() => deleteMutation.mutate(providerId)}
+                    disabled={deleteMutation.isPending}
+                    className="flex items-center gap-2 rounded-lg border border-red-500/30 bg-red-500/10 px-3 py-2 text-sm text-red-300 hover:bg-red-500/20"
+                  >
+                    <Trash2 size={14} />
+                    Clear
+                  </button>
+                </div>
+                {healthGuidance(record.health) && (
+                  <p className="text-xs text-dark-400">{healthGuidance(record.health)}</p>
+                )}
+                {record.hasStoredSecret && (
+                  <p className="text-xs text-dark-500">
+                    A secret is already stored for this provider. Leave the credential field empty to keep it unchanged, or click `Clear` to remove it.
+                  </p>
                 )}
               </div>
-            </div>
+            ))}
           </div>
         )}
 
-        {/* Tools Tab */}
-        {activeTab === 'tools' && (
-          <div className="space-y-4">
-            <div className="bg-dark-900 rounded-lg border border-dark-800 p-4">
-              <div className="flex items-center justify-between mb-4">
-                <h3 className="text-lg font-semibold text-dark-100">Available Tools</h3>
-                <span className="text-sm text-dark-400">{toolsData?.tools?.length || 0} tools</span>
-              </div>
-              <div className="grid gap-3 md:grid-cols-2">
-                {toolsData?.tools?.map((tool: Tool) => (
-                  <div
-                    key={tool.name}
-                    className="p-3 rounded-lg border border-dark-700 bg-dark-800 hover:border-dark-600 transition-colors"
-                  >
-                    <div className="flex items-center gap-2 mb-1">
-                      <Terminal size={14} className="text-cyan-400" />
-                      <span className="font-medium text-dark-200 text-sm">{tool.name}</span>
+        {activeTab === 'agents' && (
+          <div className="space-y-6">
+            <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-3">
+              {agents.map((agent) => (
+                <div key={agent.id} className="rounded-xl border border-dark-800 bg-dark-900 p-4">
+                  <div className="flex items-center gap-2">
+                    <div className="rounded-lg bg-dark-800 p-2 text-cyan-400">{getAgentIcon(agent.id)}</div>
+                    <div>
+                      <div className="font-medium text-dark-100">{agent.name}</div>
+                      <div className="text-xs text-dark-500">{agent.tools.length} tools</div>
                     </div>
-                    <p className="text-xs text-dark-400">{tool.description}</p>
-                    {tool.input_schema?.properties && (
-                      <div className="flex flex-wrap gap-1 mt-2">
-                        {Object.keys(tool.input_schema.properties).slice(0, 4).map((param: string) => (
-                          <span key={param} className="px-1.5 py-0.5 text-xs rounded bg-dark-700 text-dark-400">
-                            {param}
-                          </span>
-                        ))}
-                      </div>
-                    )}
                   </div>
-                ))}
-              </div>
-            </div>
-          </div>
-        )}
-
-        {/* API Keys Tab */}
-        {activeTab === 'keys' && (
-          <div className="space-y-4">
-            <div className="bg-dark-900 rounded-lg border border-dark-800 p-4">
-              <div className="flex items-center gap-2 mb-4">
-                <AlertCircle size={18} className="text-yellow-400" />
-                <h3 className="text-lg font-semibold text-dark-100">API Key Configuration</h3>
-              </div>
-              <p className="text-sm text-dark-400 mb-4">
-                API keys configured here are persisted to the server's .env file and survive restarts.
-              </p>
-              {keyError && (
-                <div className="flex items-center gap-2 mb-3 p-2 bg-red-900/30 border border-red-700 rounded text-sm text-red-400">
-                  <AlertCircle size={14} /> {keyError}
+                  <p className="mt-3 text-sm text-dark-400">{agent.description}</p>
                 </div>
+              ))}
+            </div>
+
+            <div className="rounded-xl border border-dark-800 bg-dark-900 p-4 space-y-4">
+              <div className="flex items-center gap-2 text-dark-100">
+                <Wrench size={16} className="text-cyan-400" />
+                Delegate Task
+              </div>
+              <select
+                value={selectedAgent}
+                onChange={(e) => setSelectedAgent(e.target.value)}
+                className="w-full rounded-lg border border-dark-700 bg-dark-800 px-3 py-2 text-dark-100"
+              >
+                <option value="">Choose an agent...</option>
+                {agents.map((agent) => (
+                  <option key={agent.id} value={agent.id}>{agent.name}</option>
+                ))}
+              </select>
+              <textarea
+                value={delegateTask}
+                onChange={(e) => setDelegateTask(e.target.value)}
+                placeholder="Describe the task..."
+                className="h-28 w-full resize-none rounded-lg border border-dark-700 bg-dark-800 px-3 py-2 text-dark-100"
+              />
+              <button
+                onClick={() => delegateMutation.mutate({ agentId: selectedAgent, task: delegateTask })}
+                disabled={!selectedAgent || !delegateTask || delegateMutation.isPending}
+                className="rounded-lg bg-cyan-600 px-4 py-2 text-sm text-white hover:bg-cyan-500 disabled:cursor-not-allowed disabled:bg-dark-700 disabled:text-dark-500"
+              >
+                {delegateMutation.isPending ? 'Working…' : 'Run Agent'}
+              </button>
+              {delegateResult && (
+                <pre className="rounded-lg border border-dark-700 bg-dark-800 p-3 text-sm text-dark-100 whitespace-pre-wrap">{delegateResult}</pre>
               )}
-
-              <div className="space-y-3">
-                {keysData?.keys && Object.entries(keysData.keys).map(([provider, status]: [string, any]) => (
-                  <div key={provider} className="flex items-center gap-4 p-3 bg-dark-800 rounded-lg">
-                    <div className="flex-1">
-                      <div className="flex items-center gap-2">
-                        <span className="font-medium text-dark-200 capitalize">{provider}</span>
-                        {status.configured ? (
-                          <span className="flex items-center gap-1 text-xs text-green-400">
-                            <Check size={12} /> Configured
-                          </span>
-                        ) : (
-                          <span className="flex items-center gap-1 text-xs text-yellow-400">
-                            <X size={12} /> Not set
-                          </span>
-                        )}
-                      </div>
-                      <span className="text-xs text-dark-500">ENV: {status.envVar}</span>
-                    </div>
-
-                    {editingKey === provider ? (
-                      <div className="flex items-center gap-2">
-                        <input
-                          type={provider === 'ollama' ? 'text' : 'password'}
-                          value={newKeyValue}
-                          onChange={(e) => setNewKeyValue(e.target.value)}
-                          placeholder={provider === 'ollama' ? 'http://localhost:11434' : 'sk-...'}
-                          className="bg-dark-700 border border-dark-600 rounded px-2 py-1 text-sm text-dark-200 w-48"
-                        />
-                        <button
-                          onClick={() => handleSaveKey(provider)}
-                          disabled={updateKeyMutation.isPending}
-                          className="p-1.5 rounded bg-green-600 hover:bg-green-500 text-white"
-                        >
-                          <Save size={14} />
-                        </button>
-                        <button
-                          onClick={() => { setEditingKey(null); setNewKeyValue(''); }}
-                          className="p-1.5 rounded bg-dark-600 hover:bg-dark-500 text-dark-300"
-                        >
-                          <X size={14} />
-                        </button>
-                      </div>
-                    ) : (
-                      <button
-                        onClick={() => { setEditingKey(provider); setNewKeyValue(status.value || ''); }}
-                        className="px-3 py-1 text-sm rounded bg-dark-700 hover:bg-dark-600 text-dark-300"
-                      >
-                        {status.configured ? 'Update' : 'Set Key'}
-                      </button>
-                    )}
-                  </div>
-                ))}
-              </div>
             </div>
+          </div>
+        )}
 
-            <div className="bg-dark-900 rounded-lg border border-dark-800 p-4">
-              <h3 className="text-lg font-semibold text-dark-100 mb-4">Environment Variables</h3>
-              <div className="space-y-2 font-mono text-sm">
-                <div className="flex items-center gap-2 p-2 bg-dark-800 rounded">
-                  <span className="text-cyan-400">OPENAI_API_KEY</span>
-                  <span className="text-dark-500">-</span>
-                  <span className="text-dark-400">Your OpenAI API key</span>
+        {activeTab === 'tools' && (
+          <div className="grid gap-3 md:grid-cols-2">
+            {tools.map((tool) => (
+              <div key={tool.name} className="rounded-xl border border-dark-800 bg-dark-900 p-4">
+                <div className="flex items-center gap-2">
+                  <Terminal size={15} className="text-cyan-400" />
+                  <span className="font-medium text-dark-100">{tool.name}</span>
                 </div>
-                <div className="flex items-center gap-2 p-2 bg-dark-800 rounded">
-                  <span className="text-cyan-400">ANTHROPIC_API_KEY</span>
-                  <span className="text-dark-500">-</span>
-                  <span className="text-dark-400">Your Anthropic API key</span>
-                </div>
-                <div className="flex items-center gap-2 p-2 bg-dark-800 rounded">
-                  <span className="text-cyan-400">GOOGLE_API_KEY</span>
-                  <span className="text-dark-500">-</span>
-                  <span className="text-dark-400">Your Google AI API key</span>
-                </div>
-                <div className="flex items-center gap-2 p-2 bg-dark-800 rounded">
-                  <span className="text-cyan-400">OLLAMA_URL</span>
-                  <span className="text-dark-500">-</span>
-                  <span className="text-dark-400">Ollama server URL (default: http://localhost:11434)</span>
-                </div>
-                <div className="flex items-center gap-2 p-2 bg-dark-800 rounded">
-                  <span className="text-cyan-400">DEFAULT_AI_PROVIDER</span>
-                  <span className="text-dark-500">-</span>
-                  <span className="text-dark-400">Default provider (anthropic/openai/local/cloud)</span>
+                <p className="mt-2 text-sm text-dark-400">{tool.description}</p>
+                <div className="mt-3 flex flex-wrap gap-1">
+                  {Object.keys(tool.input_schema?.properties ?? {}).slice(0, 5).map((param) => (
+                    <span key={param} className="rounded bg-dark-800 px-2 py-0.5 text-xs text-dark-400">{param}</span>
+                  ))}
                 </div>
               </div>
-            </div>
+            ))}
           </div>
         )}
       </div>

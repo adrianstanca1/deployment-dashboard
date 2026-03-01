@@ -674,3 +674,63 @@ export function CommitActivityChart({ data }: { data: Array<{ week: number; tota
     </div>
   );
 }
+
+export function GitHubFileBrowser({ repo }: { repo: GitHubRepo }) {
+  const [ref, setRef] = useState(repo.default_branch);
+  const { data, isLoading, isError, refetch } = useQuery({
+    queryKey: ['github-tree', repo.full_name, ref],
+    queryFn: () => githubAPI.getTree(repo.full_name, ref, true),
+    refetchInterval: 15000,
+  });
+
+  const entries = data?.data ?? [];
+
+  const topEntries = entries
+    .slice(0, 40)
+    .map((entry: any) => ({
+      ...entry,
+      sizeLabel: typeof entry.size === 'number' ? `${Math.round(entry.size / 1024)} KB` : '-',
+    }));
+
+  return (
+    <div className="rounded-xl border border-dark-700 bg-dark-900 p-4 space-y-4">
+      <div className="flex items-center justify-between gap-3">
+        <h4 className="text-sm font-semibold text-dark-100 flex items-center gap-2">
+          <FileText size={14} />
+          File Tree
+        </h4>
+        <div className="flex items-center gap-2">
+          <input
+            type="text"
+            value={ref}
+            onChange={(e) => setRef(e.target.value)}
+            className="input-field text-xs w-36"
+            placeholder="branch or ref"
+          />
+          <button
+            onClick={() => refetch()}
+            className="rounded-lg border border-dark-600 bg-dark-800 px-3 py-1 text-xs text-dark-200 hover:bg-dark-700"
+          >
+            Refresh
+          </button>
+        </div>
+      </div>
+      {isLoading && <p className="text-xs text-dark-500">Loading tree for {ref}…</p>}
+      {isError && <p className="text-xs text-red-500">Failed to load file tree.</p>}
+      <div className="space-y-2 max-h-60 overflow-y-auto">
+        {topEntries.map((entry: any) => (
+          <div key={`${entry.path}-${entry.sha ?? entry.url}`} className="flex items-center justify-between text-xs text-dark-300 border border-dark-800 rounded px-3 py-2">
+            <div className="flex-1 min-w-0 truncate">
+              <span className="font-mono text-dark-100">{entry.path}</span>
+              <span className="ml-2 text-dark-500">{entry.type}</span>
+            </div>
+            <div className="text-dark-500">{entry.sizeLabel}</div>
+          </div>
+        ))}
+      </div>
+      <p className="text-xs text-dark-500">
+        Showing {Math.min(topEntries.length, entries.length)} entries of {entries.length || '0'}. Use the full GitHub page if you need more.
+      </p>
+    </div>
+  );
+}

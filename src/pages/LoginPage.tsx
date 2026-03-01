@@ -37,8 +37,9 @@ export default function LoginPage() {
 
     try {
       const result = await authAPI.login(username.trim(), password);
+      const resolvedUsername = result.username ?? result.user?.username ?? username.trim();
       if (result.success && result.token) {
-        login(result.token, result.username);
+        login(result.token, resolvedUsername);
         const from = (location.state as { from?: string })?.from ?? '/overview';
         navigate(from, { replace: true });
       } else {

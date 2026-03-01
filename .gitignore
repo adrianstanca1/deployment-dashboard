@@ -7,3 +7,16 @@ dist/
 
 # Git worktrees
 .worktrees/
+
+# Playwright test artifacts
+.playwright-cli/
+dashboard-smoke.mjs
+
+# Auto-generated status reports (not source code)
+ACTIVATION-SUMMARY.md
+AGENT-DELEGATION-PLAN.md
+AI-SETUP-GUIDE.md
+COMPLETE-ACTIVATION-REPORT.md
+FINAL-STATUS.md
+SKILLS-GUIDE.md
+ULTIMATE-STATUS-REPORT.md

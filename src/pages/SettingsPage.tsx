@@ -92,7 +92,7 @@ const defaultSettings: DashboardSettings = {
   },
   terminal: {
     shell: 'bash',
-    workingDirectory: '/var/www',
+    workingDirectory: '/opt/docker/projects',
   },
   features: {
     enableAIAssistant: true,
@@ -232,7 +232,7 @@ function SectionCard({
 
 // File Browser Component
 function FileBrowser() {
-  const [currentPath, setCurrentPath] = useState('/var/www');
+  const [currentPath, setCurrentPath] = useState('/');
   const [selectedFile, setSelectedFile] = useState<FileItem | null>(null);
   const [showCreateModal, setShowCreateModal] = useState(false);
   const [createType, setCreateType] = useState<'file' | 'directory'>('file');
@@ -835,7 +835,7 @@ export default function SettingsPage() {
                   label="Working Directory"
                   value={settings.terminal.workingDirectory}
                   onChange={(val) => updateSection('terminal', { workingDirectory: val })}
-                  placeholder="/var/www"
+                  placeholder="/opt/docker/projects"
                   description="Default working directory for new terminals"
                 />
               </SectionCard>

@@ -60,7 +60,7 @@ export default function PM2Page() {
   const processes: PM2Process[] = data?.data ?? [];
 
   const filtered = useMemo(() =>
-    processes.filter(p => p.name.toLowerCase().includes(search.toLowerCase())),
+    processes.filter(p => (p.name ?? '').toLowerCase().includes(search.toLowerCase())),
     [processes, search]
   );
 
@@ -92,9 +92,9 @@ export default function PM2Page() {
       {/* Header */}
       <div className="flex items-center justify-between">
         <div>
-          <h1 className="text-xl font-bold text-dark-100">PM2 Processes</h1>
+          <h1 className="text-xl font-bold text-dark-100">Runtime Processes</h1>
           <p className="text-sm text-dark-400 mt-0.5">
-            {online} online · {errored.length} errored · {processes.length} total
+            {online} online · {errored.length} errored · {processes.length} total PM2-managed processes
           </p>
         </div>
         <div className="flex items-center gap-2">
@@ -129,7 +129,7 @@ export default function PM2Page() {
           <Search size={14} className="absolute left-3 top-1/2 -translate-y-1/2 text-dark-500" />
           <input
             type="text"
-            placeholder="Filter processes..."
+            placeholder="Filter runtime processes..."
             value={search}
             onChange={e => setSearch(e.target.value)}
             className="input-field pl-9 text-sm"
@@ -157,7 +157,7 @@ export default function PM2Page() {
 
       {/* Table */}
       {isLoading ? (
-        <div className="text-center py-12 text-dark-500">Loading processes...</div>
+        <div className="text-center py-12 text-dark-500">Loading runtime processes...</div>
       ) : (
         <div className="rounded-xl border border-dark-700 bg-dark-900 overflow-hidden">
           <table className="w-full text-sm">

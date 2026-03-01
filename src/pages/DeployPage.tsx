@@ -168,7 +168,7 @@ export default function DeployPage() {
     <div className="p-6 max-w-5xl mx-auto space-y-6">
       <div>
         <h1 className="text-xl font-bold text-dark-100">Deploy Manager</h1>
-        <p className="text-sm text-dark-400 mt-0.5">Clone, install, build, and start apps in PM2</p>
+        <p className="text-sm text-dark-400 mt-0.5">Clone, install, build, and register apps with the runtime manager</p>
       </div>
 
       <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">

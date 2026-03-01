@@ -101,14 +101,14 @@ const CAPABILITIES: Capability[] = [
 // Quick commands by capability
 const QUICK_COMMANDS: Record<string, { label: string; icon: React.ElementType; prompt: string }[]> = {
   default: [
-    { label: 'Check server health', icon: Activity, prompt: 'Check the overall health of my server. Look at PM2 processes, Docker containers, system resources, and tell me if everything is running smoothly.' },
+    { label: 'Check server health', icon: Activity, prompt: 'Check the overall health of my server. Look at runtime processes, Docker containers, system resources, and tell me if everything is running smoothly.' },
     { label: 'Deploy new project', icon: Rocket, prompt: 'I want to deploy a new project. Walk me through the steps and help me choose the right configuration.' },
     { label: 'Fix errors', icon: Bug, prompt: 'Check all my deployments and services for any errors. If you find any issues, explain what they mean and suggest how to fix them.' },
     { label: 'Optimize performance', icon: Sparkles, prompt: 'Analyze my server performance and suggest optimizations. Look at CPU, memory usage, and running processes.' },
     { label: 'Security check', icon: Shield, prompt: 'Perform a basic security check of my server setup. What potential vulnerabilities should I be aware of?' },
   ],
   codeReview: [
-    { label: 'Review PM2 config', icon: FileText, prompt: 'Review my PM2 ecosystem configuration for best practices and potential issues.' },
+    { label: 'Review runtime config', icon: FileText, prompt: 'Review my PM2 ecosystem or runtime configuration for best practices and potential issues.' },
     { label: 'Review Nginx setup', icon: Server, prompt: 'Review my Nginx configuration for security and performance optimizations.' },
     { label: 'Code quality check', icon: Code, prompt: 'Analyze the code quality of my deployed applications and suggest improvements.' },
     { label: 'Security audit', icon: Shield, prompt: 'Review my application code for security vulnerabilities.' },
@@ -141,7 +141,7 @@ const QUICK_COMMANDS: Record<string, { label: string; icon: React.ElementType; p
 
 // Automation tasks
 const AUTOMATION_TASKS = [
-  { label: 'Restart all errored processes', description: 'Find and restart any PM2 processes in error state', icon: RefreshCw },
+  { label: 'Restart all errored processes', description: 'Find and restart any PM2-managed processes in error state', icon: RefreshCw },
   { label: 'Clean up Docker', description: 'Remove unused containers, images, and volumes', icon: Trash2 },
   { label: 'Update all dependencies', description: 'Run npm update across all deployed projects', icon: Download },
   { label: 'Generate health report', description: 'Create a comprehensive report of all services', icon: FileText },
@@ -177,7 +177,6 @@ What would you like to work on today?`,
   const [activeCapability, setActiveCapability] = useState<string>('default');
   const [showCapabilityPanel, setShowCapabilityPanel] = useState(true);
   const [showProviders, setShowProviders] = useState(false);
-  const availableModels = activeProvider?.models || [];
   const [selectedModel, setSelectedModel] = useState<string>('');
   const [sidebarTab, setSidebarTab] = useState<'commands' | 'automations' | 'history'>('commands');
   const messagesEndRef = useRef<HTMLDivElement>(null);
@@ -310,11 +309,14 @@ What would you like to work on today?`,
       });
 
       const data = await response.json();
+      const responseText = data.warning
+        ? `Warning: ${data.warning}\n\n${data.response || 'I apologize, but I could not process that request.'}`
+        : (data.response || 'I apologize, but I could not process that request.');
 
       const assistantMessage: Message = {
         id: (Date.now() + 1).toString(),
         role: 'assistant',
-        content: data.response || 'I apologize, but I could not process that request.',
+        content: responseText,
         timestamp: new Date(),
         provider: data.provider,
         model: data.model,
@@ -376,13 +378,13 @@ What would you like to work on today?`,
     let result = '';
     switch (task.label) {
       case 'Restart all errored processes':
-        result = `✅ Automation Complete\n\nFound ${context.pm2.errored} errored processes and restarted them.\n\nCheck the PM2 page for updated status.`;
+        result = `✅ Automation Complete\n\nFound ${context.pm2.errored} errored runtime processes and restarted them.\n\nCheck the Runtime Processes page for updated status.`;
         break;
       case 'Clean up Docker':
         result = '🧹 Automation Complete\n\nRemoved unused Docker resources:\n• Stopped containers\n• Dangling images\n• Unused volumes';
         break;
       case 'Generate health report':
-        result = `📊 Health Report\n\nPM2: ${processes.filter((p: any) => p.status === 'online').length}/${processes.length} online\nCPU: ${sys?.cpu?.usage}% | Memory: ${sys?.memory?.percentage}%\nStatus: ${context.pm2.errored === 0 ? '✅ Healthy' : '⚠️ Needs Attention'}`;
+        result = `📊 Health Report\n\nRuntime: ${processes.filter((p: any) => p.status === 'online').length}/${processes.length} online\nCPU: ${sys?.cpu?.usage}% | Memory: ${sys?.memory?.percentage}%\nStatus: ${context.pm2.errored === 0 ? '✅ Healthy' : '⚠️ Needs Attention'}`;
         break;
       default:
         result = `✅ Automation Complete: ${task.label}\n\nThe task has been executed successfully.`;
@@ -801,7 +803,7 @@ What would you like to work on today?`,
             </div>
             <div className="space-y-2">
               <div className="flex justify-between text-sm">
-                <span className="text-dark-500">PM2</span>
+                <span className="text-dark-500">Runtime</span>
                 <span className={processes.filter((p: any) => p.status === 'online').length === processes.length ? 'text-green-400' : 'text-yellow-400'}>
                   {processes.filter((p: any) => p.status === 'online').length}/{processes.length}
                 </span>

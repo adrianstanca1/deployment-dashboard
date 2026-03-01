@@ -94,9 +94,9 @@ export default function QuickActionsPanel({
     try {
       await fetch('/api/pm2/restart-errored', { method: 'POST' });
       qc.invalidateQueries({ queryKey: ['pm2-list'] });
-      onNotify?.('Restarted errored processes', 'success');
+      onNotify?.('Restarted errored runtime processes', 'success');
     } catch {
-      onNotify?.('Failed to restart errored processes', 'error');
+      onNotify?.('Failed to restart errored runtime processes', 'error');
     } finally {
       setActiveAction(null);
       setIsOpen(false);
@@ -149,7 +149,7 @@ export default function QuickActionsPanel({
         onNotify?.('All systems healthy', 'success');
       } else {
         const issues = [];
-        if (!allOnline) issues.push(`${pm2Summary.errored} errored processes`);
+        if (!allOnline) issues.push(`${pm2Summary.errored} errored runtime processes`);
         if (!healthyCpu) issues.push('High CPU usage');
         if (!healthyMem) issues.push('High memory usage');
         onNotify?.(`Health check: ${issues.join(', ')}`, 'error');
@@ -177,7 +177,7 @@ export default function QuickActionsPanel({
     {
       id: 'restart-errored',
       label: 'Restart Errored',
-      description: 'Restart all errored PM2 processes',
+      description: 'Restart all errored PM2-managed processes',
       icon: <RotateCw size={18} />,
       shortcut: 'R',
       color: 'red',

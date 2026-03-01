@@ -48,7 +48,7 @@ export default function CommandPalette({ isOpen, onClose, onNotify }: Props) {
 
   const COMMANDS: Command[] = [
     { id: 'nav-overview', label: 'Overview', description: 'Dashboard overview', icon: <LayoutDashboard size={14}/>, group: 'Navigate', action: () => nav('/overview') },
-    { id: 'nav-pm2', label: 'PM2 Processes', description: 'Manage all processes', icon: <Activity size={14}/>, group: 'Navigate', action: () => nav('/pm2') },
+    { id: 'nav-pm2', label: 'Runtime Processes', description: 'Manage PM2 processes', icon: <Activity size={14}/>, group: 'Navigate', action: () => nav('/pm2') },
     { id: 'nav-terminal', label: 'Terminal', description: 'Open shell terminal', icon: <Terminal size={14}/>, group: 'Navigate', action: () => nav('/terminal') },
     { id: 'nav-deploy', label: 'Deploy Manager', description: 'Deploy new apps', icon: <Rocket size={14}/>, group: 'Navigate', action: () => nav('/deploy') },
     { id: 'nav-monitor', label: 'System Monitor', description: 'CPU, memory, disk charts', icon: <BarChart2 size={14}/>, group: 'Navigate', action: () => nav('/monitor') },
@@ -56,7 +56,7 @@ export default function CommandPalette({ isOpen, onClose, onNotify }: Props) {
     { id: 'nav-docker', label: 'Docker', icon: <Container size={14}/>, group: 'Navigate', action: () => nav('/docker') },
     { id: 'nav-logs', label: 'Live Logs', icon: <ScrollText size={14}/>, group: 'Navigate', action: () => nav('/logs') },
     { id: 'nav-server', label: 'Server Files', icon: <FolderOpen size={14}/>, group: 'Navigate', action: () => nav('/server') },
-    { id: 'pm2-restart-errored', label: 'Restart Errored Processes', icon: <AlertCircle size={14}/>, group: 'PM2 Actions', action: () => exec(() => fetch('/api/pm2/restart-errored', { method: 'POST' }).then(r => r.json()), 'Restart errored') },
+    { id: 'pm2-restart-errored', label: 'Restart Errored Runtime Processes', icon: <AlertCircle size={14}/>, group: 'PM2 Actions', action: () => exec(() => fetch('/api/pm2/restart-errored', { method: 'POST' }).then(r => r.json()), 'Restart errored') },
     { id: 'pm2-save', label: 'PM2 Save', description: 'Save process list', icon: <Save size={14}/>, group: 'PM2 Actions', action: () => exec(() => pm2API.save(), 'PM2 save') },
     { id: 'sys-nginx-reload', label: 'Nginx Reload', description: 'nginx -s reload', icon: <Server size={14}/>, group: 'System', action: () => exec(() => systemAPI.exec('nginx -s reload'), 'Nginx reload') },
     { id: 'sys-nginx-test', label: 'Nginx Config Test', description: 'nginx -t', icon: <Server size={14}/>, group: 'System', action: () => exec(() => systemAPI.exec('nginx -t'), 'Nginx test') },
@@ -126,7 +126,7 @@ export default function CommandPalette({ isOpen, onClose, onNotify }: Props) {
             value={query}
             onChange={e => setQuery(e.target.value)}
             onKeyDown={handleKeyDown}
-            placeholder="Search commands, processes, pages..."
+            placeholder="Search commands, services, pages..."
             className="flex-1 bg-transparent text-sm text-dark-100 placeholder-dark-500 outline-none"
           />
           <kbd className="text-xs text-dark-600 border border-dark-700 rounded px-1.5 py-0.5">ESC</kbd>

@@ -32,7 +32,7 @@ export default function ServerPage() {
       <div>
         <h1 className="text-xl font-bold text-dark-100">Server Files</h1>
         <p className="text-sm text-dark-400 mt-0.5">
-          {apps.length} apps in /var/www · {deployedNames.size} in PM2
+          {apps.length} apps in /opt/docker/projects · {deployedNames.size} managed by PM2
         </p>
       </div>
 
@@ -69,7 +69,7 @@ export default function ServerPage() {
                   {deployed ? (
                     <>
                       <CheckCircle size={12} className="text-green-400" />
-                      <span className="text-xs text-green-400">In PM2</span>
+                      <span className="text-xs text-green-400">Managed by PM2</span>
                       {pm2Process?.pm2_env?.env?.PORT && (
                         <span className="text-xs text-dark-500 ml-auto font-mono">:{pm2Process.pm2_env.env.PORT}</span>
                       )}

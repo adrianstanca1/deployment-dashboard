@@ -605,9 +605,9 @@ export default function DockerPage() {
         </div>
 
         {/* Tab bar */}
-        <div className="flex items-center gap-1">
-          {tabs.map(t => (
-            <button
+      <div className="flex items-center gap-1">
+        {tabs.map(t => (
+          <button
               key={t.id}
               onClick={() => setTab(t.id)}
               className={`flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-medium transition-colors ${
@@ -651,9 +651,21 @@ export default function DockerPage() {
             >
               <RefreshCw size={13} />
             </button>
-          </div>
         </div>
       </div>
+      <div className="grid grid-cols-1 md:grid-cols-2 gap-3 mt-4">
+        <div className="rounded-xl border border-dark-700 bg-dark-900 p-3 space-y-2">
+          <div className="text-xs text-dark-400">Gateway Status</div>
+          <div className="text-2xl font-bold text-dark-100">{running} running</div>
+          <div className="text-xs text-dark-500">Live logs + stats via WebSockets</div>
+        </div>
+        <div className="rounded-xl border border-dark-700 bg-dark-900 p-3 space-y-2">
+          <div className="text-xs text-dark-400">Network Count</div>
+          <div className="text-2xl font-bold text-dark-100">{networks.length}</div>
+          <div className="text-xs text-dark-500">{networks.map(net => net.Name).slice(0, 3).join(', ') || 'No networks yet'}</div>
+        </div>
+      </div>
+    </div>
 
       {/* Content */}
       <div className="flex-1 overflow-auto p-6">
