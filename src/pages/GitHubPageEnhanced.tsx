@@ -5,7 +5,7 @@ import {
   Github, Star, GitFork, ExternalLink, Search, Clock, GitBranch,
   GitCommit, AlertCircle, GitPullRequest, Tag, Zap, CheckCircle,
   XCircle, Loader2, RefreshCw, Copy, Download, Rocket, ChevronRight,
-  Lock, Eye, FileText, Circle, Plus, Play, GitMerge, Sync
+  Lock, Eye, FileText, Circle, Plus, Play, GitMerge
 } from 'lucide-react';
 import { githubAPI } from '@/api';
 import { useNotifications } from '@/hooks/useNotifications';

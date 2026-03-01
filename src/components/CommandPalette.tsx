@@ -6,7 +6,7 @@ import {
   FolderOpen, Terminal, Rocket, BarChart2, Search, RotateCw,
   Square, Save, AlertCircle, Server, ChevronRight,
 } from 'lucide-react';
-import { pm2API, systemAPI } from '@/api';
+import { pm2API, systemExecAPI } from '@/api';
 import type { PM2Process } from '@/types';
 
 interface Command {
@@ -58,8 +58,8 @@ export default function CommandPalette({ isOpen, onClose, onNotify }: Props) {
     { id: 'nav-server', label: 'Server Files', icon: <FolderOpen size={14}/>, group: 'Navigate', action: () => nav('/server') },
     { id: 'pm2-restart-errored', label: 'Restart Errored Runtime Processes', icon: <AlertCircle size={14}/>, group: 'PM2 Actions', action: () => exec(() => fetch('/api/pm2/restart-errored', { method: 'POST' }).then(r => r.json()), 'Restart errored') },
     { id: 'pm2-save', label: 'PM2 Save', description: 'Save process list', icon: <Save size={14}/>, group: 'PM2 Actions', action: () => exec(() => pm2API.save(), 'PM2 save') },
-    { id: 'sys-nginx-reload', label: 'Nginx Reload', description: 'nginx -s reload', icon: <Server size={14}/>, group: 'System', action: () => exec(() => systemAPI.exec('nginx -s reload'), 'Nginx reload') },
-    { id: 'sys-nginx-test', label: 'Nginx Config Test', description: 'nginx -t', icon: <Server size={14}/>, group: 'System', action: () => exec(() => systemAPI.exec('nginx -t'), 'Nginx test') },
+    { id: 'sys-nginx-reload', label: 'Nginx Reload', description: 'nginx -s reload', icon: <Server size={14}/>, group: 'System', action: () => exec(() => systemExecAPI.exec('nginx -s reload'), 'Nginx reload') },
+    { id: 'sys-nginx-test', label: 'Nginx Config Test', description: 'nginx -t', icon: <Server size={14}/>, group: 'System', action: () => exec(() => systemExecAPI.exec('nginx -t'), 'Nginx test') },
     ...processes.map(p => ({
       id: `restart-${p.name}`,
       label: `Restart: ${p.name}`,

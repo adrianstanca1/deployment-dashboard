@@ -6,8 +6,7 @@ import {
   HardDrive, Cpu, MemoryStick, Globe, Terminal, Rocket, RefreshCw, Play, Square,
   Trash2, Server, ChevronRight, Zap, Plus, Search, Bell, Settings, Eye, EyeOff, Save, Key, Bot
 } from 'lucide-react';
-import { pm2API, systemAPI, githubAPI, dockerAPI } from '@/api';
-import AIFailureStatusCard, { type AIFailingProvider } from '@/components/AIFailureStatusCard';
+import { pm2API, pm2ExtraAPI, systemAPI, githubAPI, dockerAPI } from '@/api';
 import StatsCard from '@/components/StatsCard';
 import StatusBadge from '@/components/StatusBadge';
 import DeploymentLink from '@/components/DeploymentLink';
@@ -197,7 +196,6 @@ function AlertBanner({ type, message, action }: { type: 'info' | 'warning' | 'er
 
 export default function CommandCenter() {
   const [searchQuery, setSearchQuery] = useState('');
-  const [switchingToCloud, setSwitchingToCloud] = useState(false);
   const [showSecrets, setShowSecrets] = useState<Record<string, boolean>>({});
   const [aiForms, setAiForms] = useState<Record<string, { apiKey: string; baseURL: string; defaultModel: string }>>({});
   const [confirmClearProvider, setConfirmClearProvider] = useState<string | null>(null);
@@ -266,7 +264,7 @@ export default function CommandCenter() {
   });
 
   const restartErroredMutation = useMutation({
-    mutationFn: pm2API.restartErrored,
+    mutationFn: pm2ExtraAPI.restartErrored,
     onSuccess: () => queryClient.invalidateQueries({ queryKey: ['pm2-list'] }),
   });
 
@@ -277,15 +275,6 @@ export default function CommandCenter() {
   const aiProviders = aiHealthData?.data?.providers ?? [];
   const aiKeyRecords = aiKeysData?.data ?? {};
   const aiAuditEvents: AIAuditEvent[] = aiAuditData?.data ?? [];
-  const failingAiProviders: AIFailingProvider[] = aiProviders
-    .filter((provider: any) => !provider.health?.healthy && provider.health?.status !== 'missing_credentials')
-    .map((provider: any) => ({
-      id: provider.id,
-      name: provider.name,
-      status: provider.health?.status,
-      message: provider.health?.message,
-    }));
-
   React.useEffect(() => {
     if (!aiKeysData?.data) return;
     setAiForms((current) => {
@@ -307,26 +296,6 @@ export default function CommandCenter() {
   const onlineCount = processes.filter(p => p.status === 'online').length;
   const erroredCount = processes.filter(p => p.status === 'errored').length;
   const runningContainers = containers.filter(c => c.status?.startsWith('Up')).length;
-
-  const switchToCloud = async () => {
-    const token = localStorage.getItem('dashboard_token');
-    if (!token) return;
-
-    try {
-      setSwitchingToCloud(true);
-      const res = await fetch('/api/ai/providers/cloud', {
-        method: 'POST',
-        headers: authHeaders(),
-      });
-      const data = await res.json();
-      if (!data.success) throw new Error(data.error || 'Failed to switch to Cloud');
-      queryClient.invalidateQueries({ queryKey: ['ai-health-command-center'] });
-      queryClient.invalidateQueries({ queryKey: ['ai-health'] });
-      queryClient.invalidateQueries({ queryKey: ['ai-providers'] });
-    } finally {
-      setSwitchingToCloud(false);
-    }
-  };
 
   const saveAIProviderMutation = useMutation({
     mutationFn: async (providerId: string) => {
@@ -553,16 +522,6 @@ export default function CommandCenter() {
             <AlertBanner key={i} {...alert} />
           ))}
         </div>
-      )}
-
-      {failingAiProviders.length > 0 && (
-        <AIFailureStatusCard
-          providers={failingAiProviders}
-          switchingToCloud={switchingToCloud}
-          onOpenSettings={() => navigate('/ai-settings')}
-          onSwitchToCloud={switchToCloud}
-          compact
-        />
       )}
 
       <section className="grid gap-4 xl:grid-cols-[1.5fr_1fr]">

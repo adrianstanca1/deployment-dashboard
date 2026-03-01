@@ -392,7 +392,7 @@ export const settingsAPI = {
     return response.data;
   },
   updateSettings: async (settings: DashboardSettings) => {
-    const entries = Object.entries(settings as Record<string, unknown>);
+    const entries = Object.entries(settings as unknown as Record<string, unknown>);
     const results = await Promise.all(entries.map(([section, values]) => api.post('/settings', { section, values })));
     return { success: results.every((result) => result.data?.success !== false), data: results.map((result) => result.data) };
   },

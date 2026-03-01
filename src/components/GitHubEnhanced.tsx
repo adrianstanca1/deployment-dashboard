@@ -8,13 +8,14 @@ import {
 import { githubAPI } from '@/api';
 import { useNotifications } from '@/hooks/useNotifications';
 import { formatRelativeTime } from '@/utils';
+import type { GitHubRepo } from '@/types';
 
 // ============================================================
 // ACTION MODALS
 // ============================================================
 
 interface ModalProps {
-  repo: { name: string; default_branch: string; html_url: string };
+  repo: { name: string; default_branch: string; html_url: string; full_name: string; owner?: { login: string } };
   onClose: () => void;
 }
 
@@ -26,7 +27,7 @@ export function CreateBranchModal({ repo, onClose }: ModalProps) {
 
   const { data: branches } = useQuery({
     queryKey: ['github-branches', repo.full_name],
-    queryFn: () => githubAPI.getBranches(repo.owner?.login, repo.name),
+    queryFn: () => githubAPI.getBranches(repo.owner?.login ?? repo.full_name.split('/')[0], repo.name),
   });
 
   const mutation = useMutation({
@@ -309,7 +310,7 @@ export function CreatePRModal({ repo, onClose }: ModalProps) {
 
   const { data: branches } = useQuery({
     queryKey: ['github-branches', repo.full_name],
-    queryFn: () => githubAPI.getBranches(repo.owner?.login, repo.name),
+    queryFn: () => githubAPI.getBranches(repo.owner?.login ?? repo.full_name.split('/')[0], repo.name),
   });
 
   const mutation = useMutation({

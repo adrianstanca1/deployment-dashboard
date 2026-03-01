@@ -21,7 +21,7 @@ export function useLogs({ processName, refreshInterval = 3000, maxLines = 500 }:
     }
     try {
       setIsLoading(true);
-      const response = await pm2API.getLogs(processName, maxLines);
+      const response = await pm2API.getLogs(processName);
       if (response.success && response.data) {
         setRawLogs(response.data);
         setError(null);

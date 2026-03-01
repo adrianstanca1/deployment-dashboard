@@ -71,6 +71,7 @@ export interface GitHubRepo {
   topics: string[];
   size: number;
   owner?: { login: string; avatar_url?: string; };
+  fork?: boolean;
 }
 
 // GitHub Commit
