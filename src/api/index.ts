@@ -281,22 +281,26 @@ export const pm2API = {
     const containers = response.data || [];
     return {
       success: true,
-      data: containers.map((c: any) => ({
-        name: c.name || c.Id?.slice(0, 12),
-        status: c.status?.startsWith('Up') ? 'online' : 'stopped',
-        uptime: c.Status,
-        cpu: '0%',
-        memory: '0 MB',
-        pm_id: c.Id?.slice(0, 12),
-        pid: 0,
-        instances: 1,
-        mode: 'docker',
-        exec_interpreter: 'docker',
-        pm_uptime: Date.now(),
-        restart_time: 0,
-        unstable_restarts: 0,
-        version: c.Image || '',
-      })),
+      data: containers.map((c: any) => {
+        const isOnline = c.status?.startsWith('Up') || c.status === 'running';
+        const statusStr = isOnline ? 'online' : 'stopped';
+        return {
+          name: c.name || c.id?.slice(0, 12),
+          status: statusStr,
+          pm_id: c.id?.slice(0, 12),
+          pid: 0,
+          monit: { cpu: 0, memory: 0 },
+          pm2_env: {
+            status: statusStr,
+            restart_time: 0,
+            pm_uptime: Date.now(),
+            exec_mode: 'docker',
+            pm_cwd: c.image || '—',
+            node_version: '—',
+            env: { PORT: '—', NODE_ENV: 'production' },
+          },
+        };
+      }),
     };
   },
   getSummary: async () => {
