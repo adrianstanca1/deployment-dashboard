@@ -1,5 +1,12 @@
 import { useState, useCallback, useRef } from 'react';
 
+export function isMuted(): boolean {
+  try {
+    const p = JSON.parse(localStorage.getItem('dashboard_prefs') || '{}');
+    return !!p.muteNotifications;
+  } catch { return false; }
+}
+
 export interface Notification {
   id: string;
   type: 'success' | 'error' | 'warning' | 'info';
@@ -19,6 +26,7 @@ export function useNotifications() {
   }, []);
 
   const notify = useCallback((notification: Omit<Notification, 'id'>) => {
+    if (isMuted()) return '';
     const id = Math.random().toString(36).slice(2);
     const duration = notification.duration ?? 4500;
     setNotifications(n => [{ ...notification, id }, ...n].slice(0, 6));

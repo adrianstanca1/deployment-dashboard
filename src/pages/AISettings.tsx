@@ -1,11 +1,12 @@
 import React, { useEffect, useMemo, useState } from 'react';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import {
-  Activity, AlertCircle, Bot, Check, Cpu, Database, Eye, EyeOff,
+  Activity, AlertCircle, Bell, BellOff, Bot, Check, Cpu, Database, Eye, EyeOff,
   FileCode, GitBranch, Globe, Key, RefreshCw, Save, Server, Settings,
   Terminal, Trash2, Wrench, Zap
 } from 'lucide-react';
 import { useNotifications } from '@/hooks/useNotifications';
+import { usePreferences } from '@/hooks/usePreferences';
 
 interface Agent {
   id: string;
@@ -156,6 +157,7 @@ function healthGuidance(health?: ProviderHealth) {
 export default function AISettings() {
   const queryClient = useQueryClient();
   const { notify } = useNotifications();
+  const { prefs, update, toggleAgent } = usePreferences();
   const [activeTab, setActiveTab] = useState<TabId>('providers');
   const [forms, setForms] = useState<Record<string, { apiKey: string; baseURL: string; defaultModel: string }>>({});
   const [showSecrets, setShowSecrets] = useState<Record<string, boolean>>({});
@@ -470,11 +472,27 @@ export default function AISettings() {
 
       <div className="flex-1 overflow-auto p-6 space-y-6">
         <div className="rounded-xl border border-dark-800 bg-dark-900 p-4">
-          <div className="flex items-center gap-2 mb-3 text-sm font-medium text-dark-200">
-            <AlertCircle size={16} className="text-yellow-400" />
-            Recent AI Alerts
+          <div className="flex items-center justify-between gap-2 mb-3">
+            <div className="flex items-center gap-2 text-sm font-medium text-dark-200">
+              <AlertCircle size={16} className="text-yellow-400" />
+              Recent AI Alerts
+            </div>
+            <button
+              onClick={() => update({ muteAIAlerts: !prefs.muteAIAlerts })}
+              title={prefs.muteAIAlerts ? 'AI alerts muted — click to unmute' : 'Mute AI alerts'}
+              className={`flex items-center gap-1.5 rounded-lg border px-2.5 py-1 text-xs font-medium transition-colors ${
+                prefs.muteAIAlerts
+                  ? 'border-yellow-500/40 bg-yellow-500/10 text-yellow-400 hover:bg-yellow-500/20'
+                  : 'border-dark-700 bg-dark-800 text-dark-400 hover:text-dark-200'
+              }`}
+            >
+              {prefs.muteAIAlerts ? <BellOff size={12} /> : <Bell size={12} />}
+              {prefs.muteAIAlerts ? 'Unmute alerts' : 'Mute alerts'}
+            </button>
           </div>
-          {alerts.length === 0 ? (
+          {prefs.muteAIAlerts ? (
+            <p className="text-sm text-dark-500">AI alerts are muted.</p>
+          ) : alerts.length === 0 ? (
             <p className="text-sm text-dark-500">No recent AI provider alerts.</p>
           ) : (
             <div className="space-y-2">
@@ -700,18 +718,32 @@ export default function AISettings() {
         {activeTab === 'agents' && (
           <div className="space-y-6">
             <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-3">
-              {agents.map((agent) => (
-                <div key={agent.id} className="rounded-xl border border-dark-800 bg-dark-900 p-4">
-                  <div className="flex items-center gap-2">
-                    <div className="rounded-lg bg-dark-800 p-2 text-cyan-400">{getAgentIcon(agent.id)}</div>
-                    <div>
-                      <div className="font-medium text-dark-100">{agent.name}</div>
-                      <div className="text-xs text-dark-500">{agent.tools.length} tools</div>
+              {agents.map((agent) => {
+                const isDisabled = prefs.disabledAgents.includes(agent.id);
+                return (
+                  <div key={agent.id} className={`rounded-xl border bg-dark-900 p-4 transition-opacity ${isDisabled ? 'border-dark-800 opacity-50' : 'border-dark-800'}`}>
+                    <div className="flex items-center justify-between gap-2">
+                      <div className="flex items-center gap-2">
+                        <div className={`rounded-lg bg-dark-800 p-2 ${isDisabled ? 'text-dark-600' : 'text-cyan-400'}`}>{getAgentIcon(agent.id)}</div>
+                        <div>
+                          <div className="font-medium text-dark-100">{agent.name}</div>
+                          <div className="text-xs text-dark-500">{agent.tools.length} tools</div>
+                        </div>
+                      </div>
+                      <label className="flex items-center gap-2 cursor-pointer select-none" title={isDisabled ? 'Enable agent' : 'Disable agent'}>
+                        <span className="text-xs text-dark-500">{isDisabled ? 'Off' : 'On'}</span>
+                        <div
+                          onClick={() => toggleAgent(agent.id)}
+                          className={`relative w-9 h-5 rounded-full transition-colors ${isDisabled ? 'bg-dark-700' : 'bg-cyan-600'}`}
+                        >
+                          <div className={`absolute top-0.5 w-4 h-4 rounded-full bg-white shadow transition-transform ${isDisabled ? 'left-0.5' : 'left-4'}`} />
+                        </div>
+                      </label>
                     </div>
+                    <p className="mt-3 text-sm text-dark-400">{agent.description}</p>
                   </div>
-                  <p className="mt-3 text-sm text-dark-400">{agent.description}</p>
-                </div>
-              ))}
+                );
+              })}
             </div>
 
             <div className="rounded-xl border border-dark-800 bg-dark-900 p-4 space-y-4">
@@ -725,7 +757,7 @@ export default function AISettings() {
                 className="w-full rounded-lg border border-dark-700 bg-dark-800 px-3 py-2 text-dark-100"
               >
                 <option value="">Choose an agent...</option>
-                {agents.map((agent) => (
+                {agents.filter(a => !prefs.disabledAgents.includes(a.id)).map((agent) => (
                   <option key={agent.id} value={agent.id}>{agent.name}</option>
                 ))}
               </select>

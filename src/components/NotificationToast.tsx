@@ -1,10 +1,20 @@
-import React from 'react';
-import { CheckCircle, XCircle, AlertTriangle, Info, X } from 'lucide-react';
+import React, { useState, useEffect } from 'react';
+import { Bell, BellOff, CheckCircle, XCircle, AlertTriangle, Info, X } from 'lucide-react';
 import type { Notification } from '@/hooks/useNotifications';
 
 interface Props {
   notifications: Notification[];
   onDismiss: (id: string) => void;
+}
+
+function getMuted() {
+  try { return !!JSON.parse(localStorage.getItem('dashboard_prefs') || '{}').muteNotifications; } catch { return false; }
+}
+function setMuted(v: boolean) {
+  try {
+    const p = JSON.parse(localStorage.getItem('dashboard_prefs') || '{}');
+    localStorage.setItem('dashboard_prefs', JSON.stringify({ ...p, muteNotifications: v }));
+  } catch {}
 }
 
 const icons = {
@@ -22,10 +32,40 @@ const borders = {
 };
 
 export default function NotificationToast({ notifications, onDismiss }: Props) {
-  if (notifications.length === 0) return null;
+  const [muted, setMutedState] = useState(getMuted);
+
+  const toggleMute = () => {
+    const next = !muted;
+    setMutedState(next);
+    setMuted(next);
+  };
+
+  // Sync if changed externally (e.g. from AISettings)
+  useEffect(() => {
+    const check = () => setMutedState(getMuted());
+    window.addEventListener('storage', check);
+    return () => window.removeEventListener('storage', check);
+  }, []);
+
+  if (notifications.length === 0 && !muted) return null;
 
   return (
     <div className="fixed bottom-4 right-4 z-50 flex flex-col gap-2 max-w-sm w-full pointer-events-none">
+      {/* Mute toggle — always visible when there are notifications or when muted */}
+      <div className="flex justify-end pointer-events-auto">
+        <button
+          onClick={toggleMute}
+          title={muted ? 'Notifications muted — click to unmute' : 'Mute notifications'}
+          className={`flex items-center gap-1.5 rounded-lg border px-2.5 py-1 text-xs font-medium shadow transition-colors ${
+            muted
+              ? 'border-yellow-500/40 bg-yellow-500/10 text-yellow-400 hover:bg-yellow-500/20'
+              : 'border-dark-700 bg-dark-900/90 text-dark-400 hover:text-dark-200 hover:bg-dark-800'
+          }`}
+        >
+          {muted ? <BellOff size={12} /> : <Bell size={12} />}
+          {muted ? 'Muted' : 'Mute'}
+        </button>
+      </div>
       {notifications.map(n => (
         <div
           key={n.id}
