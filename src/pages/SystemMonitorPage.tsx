@@ -3,7 +3,7 @@ import { useQuery } from '@tanstack/react-query';
 import {
   AreaChart, Area, XAxis, YAxis, Tooltip, ResponsiveContainer, CartesianGrid,
 } from 'recharts';
-import { Cpu, MemoryStick, HardDrive, Wifi, Activity, Network } from 'lucide-react';
+import { Cpu, ExternalLink, HardDrive, MemoryStick, Network, Wifi, Activity } from 'lucide-react';
 import { useSystemHistory } from '@/hooks/useSystemHistory';
 import { systemAPI } from '@/api';
 import { formatBytes, formatUptime } from '@/utils';
@@ -183,17 +183,32 @@ export default function SystemMonitorPage() {
           </div>
         </div>
 
-        {/* Open ports */}
+        {/* Container Ports */}
         <div className="rounded-xl border border-dark-700 bg-dark-900 p-4">
           <div className="flex items-center gap-2 mb-3">
             <Wifi size={14} className="text-dark-400" />
-            <h2 className="text-sm font-medium text-dark-300">Listening Ports ({ports.length})</h2>
+            <h2 className="text-sm font-medium text-dark-300">Container Ports ({ports.length})</h2>
           </div>
-          <div className="max-h-48 overflow-auto space-y-1">
-            {ports.map((p, i) => (
-              <div key={i} className="flex items-center gap-3 text-xs hover:bg-dark-800 px-1 py-0.5 rounded">
-                <span className="font-mono text-primary-400 w-12 shrink-0">{p.port}</span>
-                <span className="text-dark-400 truncate">{p.process}</span>
+          <div className="max-h-72 overflow-auto space-y-1">
+            {ports.map((p: { container: string; image: string; port: number; publicPort?: number | null; protocol: string; status: string; url?: string | null; accessible?: boolean }, i: number) => (
+              <div key={i} className={`flex items-center gap-2 text-xs px-2 py-1.5 rounded transition-colors ${p.accessible ? 'hover:bg-dark-800' : 'opacity-60'}`}>
+                <span className={`font-mono w-14 shrink-0 font-semibold ${p.accessible ? 'text-cyan-400' : 'text-dark-500'}`}>{p.port}</span>
+                <span className="text-dark-500 w-8 shrink-0">{p.protocol}</span>
+                <span className="text-dark-300 flex-1 truncate">{p.container}</span>
+                {p.url ? (
+                  <a
+                    href={p.url}
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    className="flex items-center gap-1 rounded px-2 py-0.5 bg-cyan-500/10 text-cyan-400 border border-cyan-500/20 hover:bg-cyan-500/20 shrink-0 font-mono text-[10px]"
+                    title={p.url}
+                  >
+                    <ExternalLink size={10} />
+                    {p.url.replace('https://', '').replace('http://', '').split('/')[0]}
+                  </a>
+                ) : (
+                  <span className="text-dark-600 text-[10px] shrink-0">internal</span>
+                )}
               </div>
             ))}
             {ports.length === 0 && <p className="text-dark-600 text-xs">Loading...</p>}
