@@ -193,10 +193,15 @@ function FileEditorModal({ file, onClose, onSave }: { file: FileItem; onClose: (
   React.useEffect(() => {
     const fetchContent = async () => {
       try {
-        // In a real implementation, you'd fetch the file content from the server
-        setContent(`// Content of ${file.name}\n// File editing would be implemented with a proper backend endpoint`);
+        const token = localStorage.getItem('dashboard_token') ?? '';
+        const res = await fetch(`/api/server/edit?path=${encodeURIComponent(file.path)}`, {
+          headers: { 'Authorization': `Bearer ${token}` },
+        });
+        const data = await res.json();
+        setContent(data.content ?? data.data ?? '');
       } catch (error) {
         console.error('Failed to load file:', error);
+        setContent('');
       } finally {
         setIsLoading(false);
       }
@@ -334,7 +339,11 @@ export default function EnhancedFileManager() {
           'Content-Type': 'application/json',
           Authorization: `Bearer ${localStorage.getItem('dashboard_token')}`,
         },
-        body: JSON.stringify({ path: currentPath, name, type }),
+        body: JSON.stringify({
+          path: currentPath.endsWith('/') ? `${currentPath}${name}` : `${currentPath}/${name}`,
+          type,
+          content: '',
+        }),
       });
       refetch();
     } catch (error) {
@@ -616,8 +625,16 @@ export default function EnhancedFileManager() {
         <FileEditorModal
           file={editingFile}
           onClose={() => setEditingFile(null)}
-          onSave={async () => {
-            // Save would be implemented
+          onSave={async (content: string) => {
+            const token = localStorage.getItem('dashboard_token') ?? '';
+            await fetch('/api/server/edit', {
+              method: 'POST',
+              headers: {
+                'Content-Type': 'application/json',
+                'Authorization': `Bearer ${token}`,
+              },
+              body: JSON.stringify({ path: editingFile?.path, content }),
+            });
             setEditingFile(null);
           }}
         />

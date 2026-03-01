@@ -26,8 +26,8 @@ export function CreateBranchModal({ repo, onClose }: ModalProps) {
   const qc = useQueryClient();
 
   const { data: branches } = useQuery({
-    queryKey: ['github-branches', repo.full_name],
-    queryFn: () => githubAPI.getBranches(repo.owner?.login ?? repo.full_name.split('/')[0], repo.name),
+    queryKey: ['github-branches', repo.name],
+    queryFn: () => githubAPI.getBranches(repo.name),
   });
 
   const mutation = useMutation({
@@ -116,8 +116,8 @@ export function TriggerWorkflowModal({ repo, onClose }: ModalProps) {
   const qc = useQueryClient();
 
   const { data: workflows, isLoading } = useQuery({
-    queryKey: ['github-workflows', repo.full_name],
-    queryFn: () => githubAPI.getWorkflows(repo.full_name),
+    queryKey: ['github-workflows', repo.name],
+    queryFn: () => githubAPI.getWorkflows(repo.name),
   });
 
   const mutation = useMutation({
@@ -309,8 +309,8 @@ export function CreatePRModal({ repo, onClose }: ModalProps) {
   const qc = useQueryClient();
 
   const { data: branches } = useQuery({
-    queryKey: ['github-branches', repo.full_name],
-    queryFn: () => githubAPI.getBranches(repo.owner?.login ?? repo.full_name.split('/')[0], repo.name),
+    queryKey: ['github-branches', repo.name],
+    queryFn: () => githubAPI.getBranches(repo.name),
   });
 
   const mutation = useMutation({
@@ -679,9 +679,10 @@ export function CommitActivityChart({ data }: { data: Array<{ week: number; tota
 export function GitHubFileBrowser({ repo }: { repo: GitHubRepo }) {
   const [ref, setRef] = useState(repo.default_branch);
   const { data, isLoading, isError, refetch } = useQuery({
-    queryKey: ['github-tree', repo.full_name, ref],
-    queryFn: () => githubAPI.getTree(repo.full_name, ref, true),
-    refetchInterval: 15000,
+    queryKey: ['github-tree', repo.name, ref],
+    queryFn: () => githubAPI.getTree(repo.name, ref, true),
+    refetchInterval: false,
+    staleTime: 5 * 60 * 1000,
   });
 
   const entries = data?.data ?? [];

@@ -100,7 +100,10 @@ export default function DeployPage() {
     try {
       const response = await fetch('/api/deploy/pipeline', {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
+        headers: {
+          'Content-Type': 'application/json',
+          'Authorization': `Bearer ${localStorage.getItem('dashboard_token') ?? ''}`,
+        },
         body: JSON.stringify({
           repo: targetRepo,
           branch,

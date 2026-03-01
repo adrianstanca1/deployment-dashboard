@@ -282,8 +282,8 @@ export const pm2API = {
     return {
       success: true,
       data: containers.map((c: any) => ({
-        name: c.Names?.[0]?.replace('/', '') || c.Id?.slice(0, 12),
-        status: c.State === 'running' ? 'online' : 'stopped',
+        name: c.name || c.Id?.slice(0, 12),
+        status: c.status?.startsWith('Up') ? 'online' : 'stopped',
         uptime: c.Status,
         cpu: '0%',
         memory: '0 MB',
@@ -302,7 +302,7 @@ export const pm2API = {
   getSummary: async () => {
     const response = await dockerAPI.getContainers();
     const containers = response.data || [];
-    const running = containers.filter((c: any) => c.State === 'running').length;
+    const running = containers.filter((c: any) => c.status?.startsWith('Up')).length;
     return {
       success: true,
       data: {

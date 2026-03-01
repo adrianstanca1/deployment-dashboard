@@ -14,7 +14,7 @@ import { useNotifications } from '@/hooks/useNotifications';
 export default function PM2Page() {
   const qc = useQueryClient();
   const [search, setSearch] = useState('');
-  const [expandedId, setExpandedId] = useState<number | null>(null);
+  const [expandedId, setExpandedId] = useState<string | null>(null);
   const [selected, setSelected] = useState<Set<string>>(new Set());
   const { notify } = useNotifications();
 
@@ -38,7 +38,10 @@ export default function PM2Page() {
     mutationFn: async ({ action, names }: { action: string; names: string[] }) => {
       const res = await fetch('/api/pm2/bulk', {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
+        headers: {
+          'Content-Type': 'application/json',
+          'Authorization': `Bearer ${localStorage.getItem('dashboard_token') ?? ''}`,
+        },
         body: JSON.stringify({ action, names }),
       });
       return res.json();
@@ -48,7 +51,10 @@ export default function PM2Page() {
   });
 
   const restartErrored = useMutation({
-    mutationFn: () => fetch('/api/pm2/restart-errored', { method: 'POST' }).then(r => r.json()),
+    mutationFn: () => fetch('/api/pm2/restart-errored', {
+      method: 'POST',
+      headers: { 'Authorization': `Bearer ${localStorage.getItem('dashboard_token') ?? ''}` },
+    }).then(r => r.json()),
     ...mutOpts,
   });
 

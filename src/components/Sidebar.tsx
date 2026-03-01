@@ -28,7 +28,7 @@ const bottomNav = [
   { to: '/github', icon: Github, label: 'GitHub' },
   { to: '/docker', icon: Container, label: 'Docker' },
   { to: '/logs', icon: ScrollText, label: 'Live Logs' },
-  { to: '/server', icon: FolderOpen, label: 'Server Files' },
+  { to: '/file-manager', icon: FolderOpen, label: 'Server Files' },
   { to: '/settings', icon: Settings, label: 'Settings' },
 ];
 

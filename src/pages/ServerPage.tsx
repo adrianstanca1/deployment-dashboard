@@ -22,7 +22,7 @@ export default function ServerPage() {
   const processes = pm2Data?.data ?? [];
 
   const deployedNames = new Set(
-    processes.map(p => p.pm2_env?.pm_cwd?.split('/').pop() ?? '')
+    (processes ?? []).map(p => (p.name ?? '').toLowerCase().replace(/[^a-z0-9]/g, ''))
   );
 
   const filtered = apps.filter(a => a.toLowerCase().includes(search.toLowerCase()));
@@ -52,8 +52,9 @@ export default function ServerPage() {
       ) : (
         <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-3">
           {filtered.map(name => {
-            const deployed = deployedNames.has(name);
-            const pm2Process = processes.find(p => p.pm2_env?.pm_cwd?.endsWith(`/${name}`));
+            const isDeployedNorm = deployedNames.has(name.toLowerCase().replace(/[^a-z0-9]/g, ""));
+            const deployed = isDeployedNorm;
+            const pm2Process = processes.find(p => p.name?.toLowerCase().replace(/[^a-z0-9]/g, "") === name.toLowerCase().replace(/[^a-z0-9]/g, ""));
             return (
               <div
                 key={name}

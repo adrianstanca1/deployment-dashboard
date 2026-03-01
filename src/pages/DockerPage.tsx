@@ -377,7 +377,10 @@ function PullImageModal({ onClose, onSuccess }: { onClose: () => void; onSuccess
     try {
       const response = await fetch('/api/docker/pull', {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
+        headers: {
+          'Content-Type': 'application/json',
+          'Authorization': `Bearer ${localStorage.getItem('dashboard_token') ?? ''}`,
+        },
         body: JSON.stringify({ image: image.trim() }),
       });
 

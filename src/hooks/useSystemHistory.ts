@@ -25,7 +25,8 @@ export function useSystemHistory(maxPoints = 60) {
   const wsRef = useRef<WebSocket | null>(null);
 
   useEffect(() => {
-    const ws = new WebSocket(wsUrl('/ws/stats'));
+    const _statsToken = localStorage.getItem('dashboard_token') ?? '';
+    const ws = new WebSocket(wsUrl(`/ws/stats?token=${encodeURIComponent(_statsToken)}`));
     wsRef.current = ws;
 
     ws.onopen = () => setConnected(true);

@@ -13,7 +13,8 @@ export function useLogStream(processName: string | null) {
     setLines([]);
     setError(null);
 
-    const ws = new WebSocket(wsUrl(`/ws/logs?process=${encodeURIComponent(processName)}`));
+    const _logToken = localStorage.getItem('dashboard_token') ?? '';
+    const ws = new WebSocket(wsUrl(`/ws/logs?process=${encodeURIComponent(processName)}&token=${encodeURIComponent(_logToken)}`));
     wsRef.current = ws;
 
     ws.onopen = () => setConnected(true);
