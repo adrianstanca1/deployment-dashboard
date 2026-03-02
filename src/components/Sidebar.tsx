@@ -16,7 +16,7 @@ interface SidebarProps {
 
 const topNav = [
   { to: '/command-center', icon: LayoutDashboard, label: 'Command Center' },
-  { to: '/ai-assistant', icon: Bot, label: 'AI Assistant' },
+  { to: '/ai-assistant', icon: Bot, label: 'OpenClaw' },
   { to: '/ai-settings', icon: Settings, label: 'AI Settings' },
   { to: '/overview', icon: Activity, label: 'Overview' },
   { to: '/health', icon: Activity, label: 'Health' },

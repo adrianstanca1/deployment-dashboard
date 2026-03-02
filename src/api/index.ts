@@ -406,6 +406,179 @@ export const settingsAPI = {
   },
 };
 
+export interface OpenClawAgent {
+  id: string;
+  name: string;
+  emoji?: string | null;
+  workspace?: string | null;
+  model?: string | null;
+}
+
+export interface OpenClawChannel {
+  id: string;
+  enabled: boolean;
+  streaming?: string | null;
+  dmPolicy?: string | null;
+  groupPolicy?: string | null;
+  mode?: string | null;
+  name?: string | null;
+}
+
+export interface OpenClawSession {
+  agentId: string;
+  sessionKey: string;
+  sessionId: string;
+  updatedAt: number;
+  model?: string | null;
+  modelProvider?: string | null;
+  channel?: string | null;
+  target?: string | null;
+  accountId?: string | null;
+  origin?: Record<string, unknown> | null;
+  lastMessage?: string;
+  lastMessageRole?: string | null;
+  transcriptPath?: string | null;
+}
+
+export interface OpenClawMessage {
+  id: string;
+  type: string;
+  role: string;
+  timestamp?: string | null;
+  provider?: string | null;
+  model?: string | null;
+  text: string;
+  toolName?: string | null;
+  toolCallId?: string | null;
+  stopReason?: string | null;
+  isError?: boolean;
+  raw?: Record<string, unknown>;
+}
+
+export interface OpenClawJob {
+  id: string;
+  type: string;
+  status: 'running' | 'completed' | 'error' | 'cancelled';
+  startedAt: number;
+  endedAt?: number | null;
+  exitCode?: number | null;
+  signal?: string | null;
+  error?: string | null;
+  meta?: Record<string, unknown> | null;
+  stdout?: string;
+  stderr?: string;
+  latest?: OpenClawMessage | null;
+}
+
+export interface OpenClawPlugin {
+  id: string;
+  enabled: boolean;
+  allowed: boolean;
+}
+
+export interface OpenClawBinding {
+  id: string;
+  agentId: string | null;
+  channel: string | null;
+  raw?: Record<string, unknown>;
+}
+
+export interface OpenClawConfigHistoryEntry {
+  id: string;
+  timestamp: number;
+  meta?: Record<string, unknown> | null;
+  summary?: {
+    before?: Record<string, number>;
+    after?: Record<string, number>;
+  };
+}
+
+export const openClawAPI = {
+  getOverview: async () => {
+    const response = await api.get('/openclaw/overview');
+    return response.data;
+  },
+  getSessions: async (agentId?: string, limit = 50) => {
+    const response = await api.get('/openclaw/sessions', {
+      params: { agentId, limit },
+    });
+    return response.data;
+  },
+  getMessages: async (agentId: string, sessionId: string, limit = 200) => {
+    const response = await api.get(`/openclaw/sessions/${agentId}/${sessionId}/messages`, {
+      params: { limit },
+    });
+    return response.data;
+  },
+  sendMessage: async (agentId: string, sessionId: string, message: string, thinking = 'low') => {
+    const response = await api.post(`/openclaw/sessions/${agentId}/${sessionId}/send`, {
+      message,
+      thinking,
+    });
+    return response.data;
+  },
+  startSession: async (agentId: string, message: string, thinking = 'low') => {
+    const response = await api.post('/openclaw/sessions/start', {
+      agentId,
+      message,
+      thinking,
+    });
+    return response.data;
+  },
+  getJob: async (jobId: string) => {
+    const response = await api.get(`/openclaw/jobs/${jobId}`);
+    return response.data;
+  },
+  cancelJob: async (jobId: string) => {
+    const response = await api.post(`/openclaw/jobs/${jobId}/cancel`);
+    return response.data;
+  },
+  getGatewayStatus: async () => {
+    const response = await api.get('/openclaw/gateway/status');
+    return response.data;
+  },
+  controlGateway: async (action: 'start' | 'stop' | 'restart') => {
+    const response = await api.post('/openclaw/gateway/control', { action });
+    return response.data;
+  },
+  getConfig: async () => {
+    const response = await api.get('/openclaw/config');
+    return response.data;
+  },
+  updateChannel: async (channelId: string, patch: Record<string, unknown>) => {
+    const response = await api.post(`/openclaw/config/channels/${channelId}`, patch);
+    return response.data;
+  },
+  updatePlugin: async (pluginId: string, enabled: boolean) => {
+    const response = await api.post(`/openclaw/config/plugins/${pluginId}`, { enabled });
+    return response.data;
+  },
+  addBinding: async (agentId: string, channel: string) => {
+    const response = await api.post('/openclaw/config/bindings', { agentId, channel });
+    return response.data;
+  },
+  deleteBinding: async (agentId: string, channel: string) => {
+    const response = await api.delete('/openclaw/config/bindings', { data: { agentId, channel } });
+    return response.data;
+  },
+  createAgent: async (payload: { id?: string; name: string; emoji?: string; model?: string }) => {
+    const response = await api.post('/openclaw/config/agents', payload);
+    return response.data;
+  },
+  updateAgent: async (agentId: string, payload: { name?: string; emoji?: string; model?: string }) => {
+    const response = await api.post(`/openclaw/config/agents/${agentId}`, payload);
+    return response.data;
+  },
+  getConfigHistory: async () => {
+    const response = await api.get('/openclaw/config/history');
+    return response.data;
+  },
+  revertConfigHistory: async (entryId: string) => {
+    const response = await api.post(`/openclaw/config/history/${entryId}/revert`);
+    return response.data;
+  },
+};
+
 // Git API
 export const gitAPI = {
   execute: async (command: string, cwd = '/opt/docker/projects') => {
