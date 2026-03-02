@@ -4,6 +4,7 @@ import { useStore } from '@/store';
 import type { PM2Process } from '@/types';
 
 const PM2_LIST_QUERY_KEY = ['pm2-list'];
+const PM2_JOBS_QUERY_KEY = ['pm2-jobs'];
 
 interface OptimisticContext {
   previousProcesses: PM2Process[] | undefined;
@@ -71,6 +72,7 @@ export function usePM2() {
     onSettled: (_, __, name) => {
       removePMPending(name);
       qc.invalidateQueries({ queryKey: PM2_LIST_QUERY_KEY });
+      qc.invalidateQueries({ queryKey: PM2_JOBS_QUERY_KEY });
     },
     onSuccess: (_, name) => {
       showToast(`Started ${name}`, 'success');
@@ -96,6 +98,7 @@ export function usePM2() {
     onSettled: (_, __, name) => {
       removePMPending(name);
       qc.invalidateQueries({ queryKey: PM2_LIST_QUERY_KEY });
+      qc.invalidateQueries({ queryKey: PM2_JOBS_QUERY_KEY });
     },
     onSuccess: (_, name) => {
       showToast(`Stopped ${name}`, 'success');
@@ -121,6 +124,7 @@ export function usePM2() {
     onSettled: (_, __, name) => {
       removePMPending(name);
       qc.invalidateQueries({ queryKey: PM2_LIST_QUERY_KEY });
+      qc.invalidateQueries({ queryKey: PM2_JOBS_QUERY_KEY });
     },
     onSuccess: (_, name) => {
       showToast(`Restarted ${name}`, 'success');
@@ -149,6 +153,7 @@ export function usePM2() {
     onSettled: (_, __, name) => {
       removePMPending(name);
       qc.invalidateQueries({ queryKey: PM2_LIST_QUERY_KEY });
+      qc.invalidateQueries({ queryKey: PM2_JOBS_QUERY_KEY });
     },
     onSuccess: (_, name) => {
       showToast(`Deleted ${name}`, 'success');
@@ -196,6 +201,7 @@ export function usePM2() {
     onSettled: (_, __, { names }) => {
       names.forEach(removePMPending);
       qc.invalidateQueries({ queryKey: PM2_LIST_QUERY_KEY });
+      qc.invalidateQueries({ queryKey: PM2_JOBS_QUERY_KEY });
     },
     onSuccess: (_, { action, names }) => {
       showToast(`${action.charAt(0).toUpperCase() + action.slice(1)}ed ${names.length} processes`, 'success');
@@ -208,6 +214,7 @@ export function usePM2() {
     mutationFn: () => pm2ExtraAPI.restartErrored(),
     onSuccess: () => {
       qc.invalidateQueries({ queryKey: PM2_LIST_QUERY_KEY });
+      qc.invalidateQueries({ queryKey: PM2_JOBS_QUERY_KEY });
       showToast('Restarted all errored processes', 'success');
     },
     onError: (err) => {
@@ -219,6 +226,7 @@ export function usePM2() {
   const saveMutation = useMutation({
     mutationFn: () => pm2ExtraAPI.save(),
     onSuccess: () => {
+      qc.invalidateQueries({ queryKey: PM2_JOBS_QUERY_KEY });
       showToast('PM2 configuration saved', 'success');
     },
     onError: (err) => {

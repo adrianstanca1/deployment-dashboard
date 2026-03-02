@@ -20,7 +20,7 @@ const ROW_HEIGHT = 56; // Height of each process row in pixels
 export default function PM2Page() {
   const [searchParams] = useSearchParams();
   const [search, setSearch] = useState('');
-  const [expandedId, setExpandedId] = useState<string | null>(null);
+  const [expandedId, setExpandedId] = useState<number | null>(null);
   const [selectedJobId, setSelectedJobId] = useState('');
 
   const {
