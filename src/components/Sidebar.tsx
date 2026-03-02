@@ -19,6 +19,7 @@ const topNav = [
   { to: '/ai-assistant', icon: Bot, label: 'AI Assistant' },
   { to: '/ai-settings', icon: Settings, label: 'AI Settings' },
   { to: '/overview', icon: Activity, label: 'Overview' },
+  { to: '/health', icon: Activity, label: 'Health' },
   { to: '/pm2', icon: Server, label: 'Runtime Processes' },
   { to: '/monitor', icon: BarChart2, label: 'System Monitor' },
   { to: '/deploy', icon: Rocket, label: 'Deploy' },

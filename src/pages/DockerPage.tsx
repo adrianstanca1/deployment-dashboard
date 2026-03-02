@@ -6,10 +6,11 @@ import {
   Container, Play, Square, RotateCw, Trash2, Search, Plus, Terminal,
   Download, HardDrive, Network, Info, X, ChevronRight, Layers,
   AlertTriangle, CheckCircle, Cpu, MemoryStick, Wifi, WifiOff,
-  RefreshCw, Package, Settings, Zap
+  RefreshCw, Package, Settings, Zap, CheckSquare
 } from 'lucide-react';
 import { dockerAPI } from '@/api';
 import StatusBadge from '@/components/StatusBadge';
+import { useStore } from '@/store';
 import type { DockerContainer, DockerImage, DockerVolume, DockerNetwork } from '@/types';
 
 // ── Helpers ──────────────────────────────────────────────────────────────────
@@ -470,6 +471,19 @@ type DockerTab = 'containers' | 'images' | 'volumes' | 'networks';
 
 export default function DockerPage() {
   const qc = useQueryClient();
+  const navigate = useNavigate();
+  const {
+    dockerSelectedIds,
+    dockerPendingIds,
+    toggleDockerSelection,
+    clearDockerSelection,
+    selectAllDocker,
+    isDockerSelected,
+    addDockerPending,
+    removeDockerPending,
+    showToast,
+  } = useStore();
+
   const [tab, setTab] = useState<DockerTab>('containers');
   const [search, setSearch] = useState('');
   const [logsContainer, setLogsContainer] = useState<DockerContainer | null>(null);
@@ -477,6 +491,7 @@ export default function DockerPage() {
   const [showRun, setShowRun] = useState(false);
   const [showPull, setShowPull] = useState(false);
   const [filter, setFilter] = useState<'all' | 'running' | 'stopped'>('all');
+  const [showConfirmDialog, setShowConfirmDialog] = useState<{ type: 'start' | 'stop' | 'remove'; ids: string[] } | null>(null);
 
   const { data: containersData, isLoading: cLoading } = useQuery({
     queryKey: ['docker-containers'],
@@ -534,6 +549,100 @@ export default function DockerPage() {
     },
   });
 
+  // Bulk action mutations
+  const bulkStartMut = useMutation({
+    mutationFn: async (ids: string[]) => {
+      const results = await Promise.allSettled(
+        ids.map(id => dockerAPI.containerAction('start', id))
+      );
+      return results;
+    },
+    onMutate: (ids) => {
+      ids.forEach(id => addDockerPending(id));
+    },
+    onSuccess: (results, ids) => {
+      const succeeded = results.filter(r => r.status === 'fulfilled' && (r.value as { success: boolean }).success).length;
+      const failed = ids.length - succeeded;
+      if (succeeded > 0) {
+        showToast(`Started ${succeeded} container${succeeded > 1 ? 's' : ''}`, 'success');
+      }
+      if (failed > 0) {
+        showToast(`Failed to start ${failed} container${failed > 1 ? 's' : ''}`, 'error');
+      }
+      qc.invalidateQueries({ queryKey: ['docker-containers'] });
+      clearDockerSelection();
+    },
+    onError: (_, ids) => {
+      showToast('Failed to start containers', 'error');
+      ids.forEach(id => removeDockerPending(id));
+    },
+    onSettled: (_, __, ids) => {
+      ids.forEach(id => removeDockerPending(id));
+    },
+  });
+
+  const bulkStopMut = useMutation({
+    mutationFn: async (ids: string[]) => {
+      const results = await Promise.allSettled(
+        ids.map(id => dockerAPI.containerAction('stop', id))
+      );
+      return results;
+    },
+    onMutate: (ids) => {
+      ids.forEach(id => addDockerPending(id));
+    },
+    onSuccess: (results, ids) => {
+      const succeeded = results.filter(r => r.status === 'fulfilled' && (r.value as { success: boolean }).success).length;
+      const failed = ids.length - succeeded;
+      if (succeeded > 0) {
+        showToast(`Stopped ${succeeded} container${succeeded > 1 ? 's' : ''}`, 'success');
+      }
+      if (failed > 0) {
+        showToast(`Failed to stop ${failed} container${failed > 1 ? 's' : ''}`, 'error');
+      }
+      qc.invalidateQueries({ queryKey: ['docker-containers'] });
+      clearDockerSelection();
+    },
+    onError: (_, ids) => {
+      showToast('Failed to stop containers', 'error');
+      ids.forEach(id => removeDockerPending(id));
+    },
+    onSettled: (_, __, ids) => {
+      ids.forEach(id => removeDockerPending(id));
+    },
+  });
+
+  const bulkRemoveMut = useMutation({
+    mutationFn: async (ids: string[]) => {
+      const results = await Promise.allSettled(
+        ids.map(id => dockerAPI.removeContainer(id))
+      );
+      return results;
+    },
+    onMutate: (ids) => {
+      ids.forEach(id => addDockerPending(id));
+    },
+    onSuccess: (results, ids) => {
+      const succeeded = results.filter(r => r.status === 'fulfilled' && (r.value as { success: boolean }).success).length;
+      const failed = ids.length - succeeded;
+      if (succeeded > 0) {
+        showToast(`Removed ${succeeded} container${succeeded > 1 ? 's' : ''}`, 'success');
+      }
+      if (failed > 0) {
+        showToast(`Failed to remove ${failed} container${failed > 1 ? 's' : ''}`, 'error');
+      }
+      qc.invalidateQueries({ queryKey: ['docker-containers'] });
+      clearDockerSelection();
+    },
+    onError: (_, ids) => {
+      showToast('Failed to remove containers', 'error');
+      ids.forEach(id => removeDockerPending(id));
+    },
+    onSettled: (_, __, ids) => {
+      ids.forEach(id => removeDockerPending(id));
+    },
+  });
+
   const containers = containersData?.data ?? [];
   const images = imagesData?.data ?? [];
   const volumes = volumesData?.data ?? [];
@@ -550,6 +659,47 @@ export default function DockerPage() {
       (filter === 'stopped' && !c.status?.startsWith('Up'));
     return matchSearch && matchFilter;
   }), [containers, search, filter]);
+
+  // Selection state
+  const filteredIds = useMemo(() => filteredContainers.map(c => c.id), [filteredContainers]);
+  const selectedCount = dockerSelectedIds.length;
+  const allSelected = filteredIds.length > 0 && filteredIds.every(id => dockerSelectedIds.includes(id));
+  const someSelected = selectedCount > 0 && !allSelected;
+
+  const handleSelectAll = () => {
+    if (allSelected) {
+      // Deselect all filtered containers
+      const newSelection = dockerSelectedIds.filter(id => !filteredIds.includes(id));
+      selectAllDocker(newSelection);
+    } else {
+      // Select all filtered containers
+      const newSelection = Array.from(new Set([...dockerSelectedIds, ...filteredIds]));
+      selectAllDocker(newSelection);
+    }
+  };
+
+  const handleBulkAction = (action: 'start' | 'stop' | 'remove') => {
+    if (dockerSelectedIds.length === 0) return;
+    setShowConfirmDialog({ type: action, ids: dockerSelectedIds });
+  };
+
+  const executeBulkAction = () => {
+    if (!showConfirmDialog) return;
+    const { type, ids } = showConfirmDialog;
+    setShowConfirmDialog(null);
+
+    switch (type) {
+      case 'start':
+        bulkStartMut.mutate(ids);
+        break;
+      case 'stop':
+        bulkStopMut.mutate(ids);
+        break;
+      case 'remove':
+        bulkRemoveMut.mutate(ids);
+        break;
+    }
+  };
 
   const filteredImages = useMemo(() => images.filter(img =>
     `${img.repository}:${img.tag}`.toLowerCase().includes(search.toLowerCase())
@@ -675,17 +825,99 @@ export default function DockerPage() {
         {/* Containers tab */}
         {tab === 'containers' && (
           <div className="space-y-2">
+            {/* Bulk Action Bar */}
+            {selectedCount > 0 && (
+              <div className="flex items-center justify-between px-4 py-2 rounded-xl border border-primary-500/30 bg-primary-500/10 mb-3">
+                <div className="flex items-center gap-3">
+                  <span className="text-sm font-medium text-dark-100">
+                    {selectedCount} selected
+                  </span>
+                  <button
+                    onClick={() => clearDockerSelection()}
+                    className="text-xs text-dark-500 hover:text-dark-300 transition-colors"
+                  >
+                    Clear
+                  </button>
+                </div>
+                <div className="flex items-center gap-2">
+                  <button
+                    onClick={() => handleBulkAction('start')}
+                    disabled={bulkStartMut.isPending}
+                    className="flex items-center gap-1.5 px-3 py-1.5 text-xs font-medium bg-green-500/20 text-green-400 hover:bg-green-500/30 rounded-lg transition-colors disabled:opacity-50"
+                  >
+                    <Play size={12} /> Start
+                  </button>
+                  <button
+                    onClick={() => handleBulkAction('stop')}
+                    disabled={bulkStopMut.isPending}
+                    className="flex items-center gap-1.5 px-3 py-1.5 text-xs font-medium bg-yellow-500/20 text-yellow-400 hover:bg-yellow-500/30 rounded-lg transition-colors disabled:opacity-50"
+                  >
+                    <Square size={12} /> Stop
+                  </button>
+                  <button
+                    onClick={() => handleBulkAction('remove')}
+                    disabled={bulkRemoveMut.isPending}
+                    className="flex items-center gap-1.5 px-3 py-1.5 text-xs font-medium bg-red-500/20 text-red-400 hover:bg-red-500/30 rounded-lg transition-colors disabled:opacity-50"
+                  >
+                    <Trash2 size={12} /> Remove
+                  </button>
+                </div>
+              </div>
+            )}
+
             {cLoading && <div className="text-center py-10 text-dark-500">Loading containers…</div>}
+            {/* Table Header with Select All */}
+            {!cLoading && filteredContainers.length > 0 && (
+              <div className="flex items-center gap-3 px-4 py-2 text-xs text-dark-500 border-b border-dark-800">
+                <button
+                  onClick={handleSelectAll}
+                  className="flex items-center gap-2 hover:text-dark-300 transition-colors"
+                  title={allSelected ? 'Deselect all' : 'Select all'}
+                >
+                  <div className={`w-4 h-4 rounded border flex items-center justify-center transition-colors ${
+                    allSelected
+                      ? 'bg-primary-500 border-primary-500'
+                      : someSelected
+                      ? 'bg-primary-500/50 border-primary-500'
+                      : 'border-dark-600 hover:border-dark-400'
+                  }`}>
+                    {(allSelected || someSelected) && <CheckSquare size={12} className="text-white" />}
+                  </div>
+                  <span>Select all</span>
+                </button>
+              </div>
+            )}
             {!cLoading && filteredContainers.length === 0 && (
               <div className="text-center py-10 text-dark-500">No containers found</div>
             )}
             {filteredContainers.map(c => {
               const isRunning = c.status?.startsWith('Up');
+              const isSelected = isDockerSelected(c.id);
+              const isPending = dockerPendingIds.includes(c.id);
               return (
                 <div
                   key={c.id}
-                  className="flex items-center gap-3 px-4 py-3 rounded-xl border border-dark-800 bg-dark-900 hover:border-dark-700 transition-colors group"
+                  className={`flex items-center gap-3 px-4 py-3 rounded-xl border transition-colors group ${
+                    isSelected
+                      ? 'border-primary-500/50 bg-primary-500/5'
+                      : 'border-dark-800 bg-dark-900 hover:border-dark-700'
+                  } ${isPending ? 'opacity-60' : ''}`}
                 >
+                  {/* Checkbox */}
+                  <button
+                    onClick={() => toggleDockerSelection(c.id)}
+                    className="flex items-center justify-center"
+                    disabled={isPending}
+                  >
+                    <div className={`w-4 h-4 rounded border flex items-center justify-center transition-colors ${
+                      isSelected
+                        ? 'bg-primary-500 border-primary-500'
+                        : 'border-dark-600 hover:border-dark-400'
+                    }`}>
+                      {isSelected && <CheckSquare size={12} className="text-white" />}
+                    </div>
+                  </button>
+
                   {/* Status dot */}
                   <div className={`w-2 h-2 rounded-full shrink-0 ${isRunning ? 'bg-green-400' : 'bg-dark-600'}`} />
 
@@ -865,6 +1097,60 @@ export default function DockerPage() {
       {/* Modals + Drawers */}
       {logsContainer && <ContainerLogsModal container={logsContainer} onClose={() => setLogsContainer(null)} />}
       {inspectContainer && <InspectDrawer container={inspectContainer} onClose={() => setInspectContainer(null)} />}
+
+      {/* Bulk Action Confirmation Dialog */}
+      {showConfirmDialog && (
+        <div className="fixed inset-0 z-50 bg-black/70 flex items-center justify-center p-4">
+          <div className="w-full max-w-md bg-dark-900 rounded-xl border border-dark-700 p-5 space-y-4">
+            <div className="flex items-center gap-3">
+              <div className={`p-2 rounded-full ${
+                showConfirmDialog.type === 'remove' ? 'bg-red-500/20' : 'bg-primary-500/20'
+              }`}>
+                {showConfirmDialog.type === 'remove' ? (
+                  <Trash2 size={20} className="text-red-400" />
+                ) : showConfirmDialog.type === 'start' ? (
+                  <Play size={20} className="text-green-400" />
+                ) : (
+                  <Square size={20} className="text-yellow-400" />
+                )}
+              </div>
+              <div>
+                <h3 className="font-semibold text-dark-100">
+                  {showConfirmDialog.type === 'start' && 'Start Containers'}
+                  {showConfirmDialog.type === 'stop' && 'Stop Containers'}
+                  {showConfirmDialog.type === 'remove' && 'Remove Containers'}
+                </h3>
+                <p className="text-sm text-dark-400">
+                  Are you sure you want to {showConfirmDialog.type} {showConfirmDialog.ids.length} container{showConfirmDialog.ids.length > 1 ? 's' : ''}?
+                </p>
+              </div>
+            </div>
+            {showConfirmDialog.type === 'remove' && (
+              <p className="text-xs text-red-400 bg-red-500/10 rounded p-2">
+                This action cannot be undone.
+              </p>
+            )}
+            <div className="flex justify-end gap-2">
+              <button
+                onClick={() => setShowConfirmDialog(null)}
+                className="btn-secondary text-sm"
+              >
+                Cancel
+              </button>
+              <button
+                onClick={executeBulkAction}
+                className={`btn-primary text-sm ${
+                  showConfirmDialog.type === 'remove' ? 'bg-red-600 hover:bg-red-700' : ''
+                }`}
+              >
+                {showConfirmDialog.type === 'start' && 'Start'}
+                {showConfirmDialog.type === 'stop' && 'Stop'}
+                {showConfirmDialog.type === 'remove' && 'Remove'}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
       {showRun && <RunContainerModal onClose={() => setShowRun(false)} onSuccess={invalidate} />}
       {showPull && <PullImageModal onClose={() => setShowPull(false)} onSuccess={() => qc.invalidateQueries({ queryKey: ['docker-images'] })} />}
     </div>

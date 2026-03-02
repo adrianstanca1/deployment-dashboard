@@ -1,5 +1,6 @@
 import React, { useState, useRef, useEffect } from 'react';
-import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
+import { useQuery, useQueryClient } from '@tanstack/react-query';
+import ReactMarkdown from 'react-markdown';
 import {
   Bot, Send, Loader2, Activity, RefreshCw,
   Trash2, ChevronDown,
@@ -7,9 +8,10 @@ import {
   Cloud, Layers, Kanban,
   Brain, GitBranch,
   X, Download,
-  Target, Command,
+  Target, Command, Square,
 } from 'lucide-react';
 import { pm2API, dockerAPI, systemAPI } from '@/api';
+import { useAIStreaming } from '@/hooks/useAIStreaming';
 
 // Types
 interface Message {
