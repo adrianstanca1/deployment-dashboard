@@ -149,4 +149,19 @@
   .text-shadow {
     text-shadow: 0 2px 10px rgba(0, 0, 0, 0.3);
   }
+
+  /* Streaming text cursor effect */
+  .streaming-text {
+    position: relative;
+  }
+
+  /* Typing cursor animation for streaming messages */
+  @keyframes blink {
+    0%, 50% { opacity: 1; }
+    51%, 100% { opacity: 0; }
+  }
+
+  .animate-pulse {
+    animation: blink 1s infinite;
+  }
 }

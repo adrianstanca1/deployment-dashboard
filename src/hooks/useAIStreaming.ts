@@ -10,10 +10,16 @@ interface StreamingMessage {
   model?: string;
 }
 
+interface SendMessageOptions {
+  capability?: string;
+  provider?: string;
+  model?: string;
+}
+
 interface UseAIStreamingReturn {
   messages: StreamingMessage[];
   isStreaming: boolean;
-  sendMessage: (content: string, capability?: string) => Promise<void>;
+  sendMessage: (content: string, options?: SendMessageOptions) => Promise<void>;
   stopStreaming: () => void;
   clearMessages: () => void;
 }
@@ -22,44 +28,90 @@ export function useAIStreaming(conversationId?: string): UseAIStreamingReturn {
   const [messages, setMessages] = useState<StreamingMessage[]>([]);
   const [isStreaming, setIsStreaming] = useState(false);
   const abortRef = useRef<AbortController | null>(null);
+  const latestAssistantRef = useRef<StreamingMessage | null>(null);
+  const skipPersistRef = useRef(false);
   const store = useStore();
 
-  const sendMessage = useCallback(async (content: string, capability?: string) => {
+  const updateAssistantMessage = useCallback((messageId: string, updater: (message: StreamingMessage) => StreamingMessage) => {
+    setMessages(prev =>
+      prev.map(msg => {
+        if (msg.id !== messageId) return msg;
+        const nextMessage = updater(msg);
+        latestAssistantRef.current = nextMessage;
+        return nextMessage;
+      })
+    );
+  }, []);
+
+  const sendMessage = useCallback(async (content: string, options?: SendMessageOptions) => {
+    const messageBaseId = Date.now().toString();
     const userMessage: StreamingMessage = {
-      id: `${Date.now()}-user`,
+      id: `${messageBaseId}-user`,
       role: 'user',
       content,
     };
 
-    setMessages(prev => [...prev, userMessage]);
-    setIsStreaming(true);
-
     const assistantMessage: StreamingMessage = {
-      id: `${Date.now()}-assistant`,
+      id: `${messageBaseId}-assistant`,
       role: 'assistant',
       content: '',
       isStreaming: true,
     };
 
-    setMessages(prev => [...prev, assistantMessage]);
+    latestAssistantRef.current = assistantMessage;
+    skipPersistRef.current = false;
+    setMessages(prev => [...prev, userMessage, assistantMessage]);
+    setIsStreaming(true);
 
     abortRef.current = new AbortController();
 
     try {
+      const token = localStorage.getItem('dashboard_token');
       const response = await fetch('/api/ai/chat', {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
+        headers: {
+          'Content-Type': 'application/json',
+          ...(token ? { Authorization: `Bearer ${token}` } : {}),
+        },
         body: JSON.stringify({
           message: content,
-          capability,
+          capability: options?.capability,
           conversationId,
+          provider: options?.provider,
+          model: options?.model,
           stream: true,
         }),
         signal: abortRef.current.signal,
       });
 
+      if (!response.ok) {
+        let errorMessage = `Request failed with status ${response.status}`;
+        try {
+          const errorData = await response.json();
+          errorMessage = errorData.error || errorData.message || errorMessage;
+        } catch {
+          // Ignore JSON parse errors and use the status-based message.
+        }
+        throw new Error(errorMessage);
+      }
+
+      const contentType = response.headers.get('content-type') || '';
+
+      if (contentType.includes('application/json')) {
+        const data = await response.json();
+        const nextContent = data.response || data.content || 'No response received.';
+        updateAssistantMessage(assistantMessage.id, (msg) => ({
+          ...msg,
+          content: nextContent,
+          provider: data.provider || msg.provider,
+          model: data.model || msg.model,
+        }));
+        return;
+      }
+
       const reader = response.body?.getReader();
       const decoder = new TextDecoder();
+      let buffer = '';
 
       if (!reader) throw new Error('No response body');
 
@@ -67,72 +119,70 @@ export function useAIStreaming(conversationId?: string): UseAIStreamingReturn {
         const { done, value } = await reader.read();
         if (done) break;
 
-        const chunk = decoder.decode(value, { stream: true });
+        buffer += decoder.decode(value, { stream: true });
+        const events = buffer.split('\n\n');
+        buffer = events.pop() || '';
 
-        // Parse SSE format
-        const lines = chunk.split('\n');
-        for (const line of lines) {
-          if (line.startsWith('data: ')) {
+        for (const event of events) {
+          const lines = event.split('\n');
+          for (const line of lines) {
+            if (!line.startsWith('data: ')) continue;
             const data = line.slice(6);
             if (data === '[DONE]') continue;
 
             try {
               const parsed = JSON.parse(data);
-              if (parsed.content) {
-                setMessages(prev =>
-                  prev.map(msg =>
-                    msg.id === assistantMessage.id
-                      ? {
-                          ...msg,
-                          content: msg.content + parsed.content,
-                          provider: parsed.provider || msg.provider,
-                          model: parsed.model || msg.model,
-                        }
-                      : msg
-                  )
-                );
+              if (parsed.content || parsed.provider || parsed.model) {
+                updateAssistantMessage(assistantMessage.id, (msg) => ({
+                  ...msg,
+                  content: parsed.content ? msg.content + parsed.content : msg.content,
+                  provider: parsed.provider || msg.provider,
+                  model: parsed.model || msg.model,
+                }));
               }
             } catch {
-              // If not JSON, append as plain text
-              setMessages(prev =>
-                prev.map(msg =>
-                  msg.id === assistantMessage.id
-                    ? { ...msg, content: msg.content + data }
-                    : msg
-                )
-              );
+              updateAssistantMessage(assistantMessage.id, (msg) => ({
+                ...msg,
+                content: msg.content + data,
+              }));
             }
           }
+        }
+      }
+
+      if (buffer.trim()) {
+        for (const line of buffer.split('\n')) {
+          if (!line.startsWith('data: ')) continue;
+          const data = line.slice(6);
+          if (!data || data === '[DONE]') continue;
+          updateAssistantMessage(assistantMessage.id, (msg) => ({
+            ...msg,
+            content: msg.content + data,
+          }));
         }
       }
     } catch (error) {
       if (error instanceof Error && error.name !== 'AbortError') {
         console.error('Streaming error:', error);
-        setMessages(prev =>
-          prev.map(msg =>
-            msg.id === assistantMessage.id
-              ? { ...msg, content: 'Error: ' + error.message, isStreaming: false }
-              : msg
-          )
-        );
+        updateAssistantMessage(assistantMessage.id, (msg) => ({
+          ...msg,
+          content: `Error: ${error.message}`,
+          isStreaming: false,
+        }));
       }
     } finally {
       setIsStreaming(false);
-      setMessages(prev =>
-        prev.map(msg =>
-          msg.id === assistantMessage.id ? { ...msg, isStreaming: false } : msg
-        )
-      );
+      updateAssistantMessage(assistantMessage.id, (msg) => ({ ...msg, isStreaming: false }));
+      abortRef.current = null;
 
-      // Save to store conversation
-      if (conversationId) {
+      if (conversationId && !skipPersistRef.current) {
         store.addMessage(conversationId, {
           id: userMessage.id,
           role: 'user',
           content: userMessage.content,
           timestamp: Date.now(),
         });
-        const finalAssistant = messages.find(m => m.id === assistantMessage.id);
+        const finalAssistant = latestAssistantRef.current;
         if (finalAssistant) {
           store.addMessage(conversationId, {
             id: finalAssistant.id,
@@ -145,14 +195,18 @@ export function useAIStreaming(conversationId?: string): UseAIStreamingReturn {
         }
       }
     }
-  }, [conversationId, store, messages]);
+  }, [conversationId, store, updateAssistantMessage]);
 
   const stopStreaming = useCallback(() => {
     abortRef.current?.abort();
   }, []);
 
   const clearMessages = useCallback(() => {
+    skipPersistRef.current = true;
+    abortRef.current?.abort();
     setMessages([]);
+    latestAssistantRef.current = null;
+    setIsStreaming(false);
   }, []);
 
   return { messages, isStreaming, sendMessage, stopStreaming, clearMessages };
