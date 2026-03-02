@@ -87,6 +87,18 @@ export const systemAPI = {
 
 // Docker API calls - maps to /api/docker/*
 export const dockerAPI = {
+  getJobs: async (limit = 12) => {
+    const response = await api.get('/docker/jobs', { params: { limit } });
+    return response.data;
+  },
+  getJob: async (jobId: string) => {
+    const response = await api.get(`/docker/jobs/${jobId}`);
+    return response.data;
+  },
+  cancelJob: async (jobId: string) => {
+    const response = await api.post(`/docker/jobs/${jobId}/cancel`);
+    return response.data;
+  },
   getContainers: async () => {
     const response = await api.get('/docker/containers');
     return response.data;
@@ -156,6 +168,13 @@ export const dockerAPI = {
   },
   getSystemDf: async () => {
     const response = await api.get('/docker/system/df');
+    return response.data;
+  },
+};
+
+export const operationsAPI = {
+  getRecent: async (limit = 20) => {
+    const response = await api.get('/operations/recent', { params: { limit } });
     return response.data;
   },
 };
@@ -277,63 +296,44 @@ export const systemExecAPI = {
 // Legacy exports for compatibility
 export const pm2API = {
   getList: async () => {
-    const response = await dockerAPI.getContainers();
-    const containers = response.data || [];
-    return {
-      success: true,
-      data: containers.map((c: any) => {
-        const isOnline = c.status?.startsWith('Up') || c.status === 'running';
-        const statusStr = isOnline ? 'online' : 'stopped';
-        return {
-          name: c.name || c.id?.slice(0, 12),
-          status: statusStr,
-          pm_id: c.id?.slice(0, 12),
-          pid: 0,
-          monit: { cpu: 0, memory: 0 },
-          pm2_env: {
-            status: statusStr,
-            restart_time: 0,
-            pm_uptime: Date.now(),
-            exec_mode: 'docker',
-            pm_cwd: c.image || '—',
-            node_version: '—',
-            env: { PORT: '—', NODE_ENV: 'production' },
-          },
-        };
-      }),
-    };
+    const response = await api.get('/pm2/list');
+    return response.data;
   },
   getSummary: async () => {
-    const response = await dockerAPI.getContainers();
-    const containers = response.data || [];
-    const running = containers.filter((c: any) => c.status?.startsWith('Up')).length;
-    return {
-      success: true,
-      data: {
-        total: containers.length,
-        online: running,
-        errored: 0,
-        stopped: containers.length - running,
-      },
-    };
+    const response = await api.get('/pm2/status');
+    return response.data;
   },
   restart: async (name: string) => {
-    return dockerAPI.restartContainer(name);
+    const response = await api.post(`/pm2/restart/${name}`);
+    return response.data;
   },
   stop: async (name: string) => {
-    return dockerAPI.stopContainer(name);
+    const response = await api.post(`/pm2/stop/${name}`);
+    return response.data;
   },
   start: async (name: string) => {
-    return dockerAPI.startContainer(name);
+    const response = await api.post(`/pm2/start/${name}`);
+    return response.data;
   },
   getLogs: async (name: string) => {
-    return dockerAPI.getLogs(name);
+    const response = await api.get(`/pm2/logs/${name}`);
+    return response.data;
   },
   save: async () => {
-    return { success: true };
+    const response = await api.post('/pm2/save');
+    return response.data;
   },
   delete: async (name: string) => {
-    return dockerAPI.removeContainer(name);
+    const response = await api.post(`/pm2/delete/${name}`);
+    return response.data;
+  },
+  getJobs: async (limit = 12) => {
+    const response = await api.get('/pm2/jobs', { params: { limit } });
+    return response.data;
+  },
+  getJob: async (jobId: string) => {
+    const response = await api.get(`/pm2/jobs/${jobId}`);
+    return response.data;
   },
 };
 
@@ -493,6 +493,70 @@ export interface OpenClawConfigHistoryEntry {
   };
 }
 
+export interface DeployJobStep {
+  id: string;
+  label: string;
+  status: 'pending' | 'running' | 'done' | 'error';
+  command?: string;
+}
+
+export interface DeployJobOutputLine {
+  text: string;
+  step?: string;
+  isErr?: boolean;
+  ts?: number;
+}
+
+export interface DeployJob {
+  id: string;
+  status: 'running' | 'completed' | 'error' | 'cancelled';
+  startedAt: number;
+  endedAt?: number | null;
+  currentStep?: string | null;
+  error?: string | null;
+  meta?: {
+    repo?: string;
+    branch?: string;
+    port?: number;
+    pm2Name?: string;
+  } | null;
+  steps?: DeployJobStep[];
+  output?: DeployJobOutputLine[];
+}
+
+export interface DockerJob {
+  id: string;
+  type: string;
+  status: 'running' | 'completed' | 'error' | 'cancelled';
+  startedAt: number;
+  endedAt?: number | null;
+  error?: string | null;
+  meta?: Record<string, unknown> | null;
+  output?: Array<{ text: string; isErr?: boolean; ts?: number }>;
+}
+
+export interface UnifiedOperation {
+  id: string;
+  source: 'openclaw' | 'deploy' | 'docker' | 'pm2';
+  type: string;
+  status: 'running' | 'completed' | 'error' | 'cancelled';
+  startedAt: number;
+  endedAt?: number | null;
+  detail?: string | null;
+  meta?: Record<string, unknown> | null;
+}
+
+export interface PM2Job {
+  id: string;
+  type: string;
+  status: 'running' | 'completed' | 'error';
+  startedAt: number;
+  endedAt?: number | null;
+  error?: string | null;
+  meta?: Record<string, unknown> | null;
+  output?: Array<{ text: string; isErr?: boolean; ts?: number }>;
+}
+
 export const openClawAPI = {
   getOverview: async () => {
     const response = await api.get('/openclaw/overview');
@@ -589,6 +653,18 @@ export const gitAPI = {
 
 // Deploy API
 export const deployAPI = {
+  getJobs: async (limit = 12) => {
+    const response = await api.get('/deploy/jobs', { params: { limit } });
+    return response.data;
+  },
+  getJob: async (jobId: string) => {
+    const response = await api.get(`/deploy/jobs/${jobId}`);
+    return response.data;
+  },
+  cancelJob: async (jobId: string) => {
+    const response = await api.post(`/deploy/jobs/${jobId}/cancel`);
+    return response.data;
+  },
   clone: async (repo: string, branch = 'main') => {
     const response = await api.post('/deploy/clone', { repo: normalizeRepoName(repo), branch });
     return response.data;

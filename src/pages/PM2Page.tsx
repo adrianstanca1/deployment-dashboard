@@ -1,5 +1,9 @@
 import React, { useState, useMemo, useCallback } from 'react';
+import { useQuery } from '@tanstack/react-query';
+import { formatDistanceToNow } from 'date-fns';
+import { useSearchParams } from 'react-router-dom';
 import {
+  Activity,
   RotateCw, Square, Trash2, Play, RefreshCw, Search,
   ChevronDown, ChevronUp, AlertCircle, CheckSquare, Square as SquareIcon,
   Save, X, Loader2, PlayCircle, StopCircle,
@@ -9,12 +13,15 @@ import { VirtualList } from '@/components/VirtualList';
 import StatusBadge from '@/components/StatusBadge';
 import { formatBytes, formatUptime } from '@/utils';
 import type { PM2Process } from '@/types';
+import { pm2API, type PM2Job } from '@/api';
 
 const ROW_HEIGHT = 56; // Height of each process row in pixels
 
 export default function PM2Page() {
+  const [searchParams] = useSearchParams();
   const [search, setSearch] = useState('');
   const [expandedId, setExpandedId] = useState<string | null>(null);
+  const [selectedJobId, setSelectedJobId] = useState('');
 
   const {
     processes,
@@ -37,6 +44,27 @@ export default function PM2Page() {
     save,
   } = usePM2();
 
+  const { data: pm2JobsData } = useQuery({
+    queryKey: ['pm2-jobs'],
+    queryFn: async () => {
+      const response = await pm2API.getJobs(10);
+      return response.data as PM2Job[];
+    },
+    refetchInterval: 4000,
+  });
+  const { data: pm2JobData } = useQuery({
+    queryKey: ['pm2-job', selectedJobId],
+    queryFn: async () => {
+      const response = await pm2API.getJob(selectedJobId);
+      return response.data as PM2Job;
+    },
+    enabled: Boolean(selectedJobId),
+    refetchInterval: (query) => {
+      const job = query.state.data as PM2Job | undefined;
+      return job?.status === 'running' ? 1200 : false;
+    },
+  });
+
   const filtered = useMemo(() =>
     processes.filter(p => (p.name ?? '').toLowerCase().includes(search.toLowerCase())),
     [processes, search]
@@ -51,6 +79,15 @@ export default function PM2Page() {
     processes.filter(p => p.status === 'online').length,
     [processes]
   );
+  const pm2Jobs = pm2JobsData || [];
+  const selectedJob = pm2JobData || pm2Jobs.find((job) => job.id === selectedJobId) || null;
+
+  React.useEffect(() => {
+    const jobFromUrl = searchParams.get('job') || '';
+    if (jobFromUrl && jobFromUrl !== selectedJobId) {
+      setSelectedJobId(jobFromUrl);
+    }
+  }, [searchParams, selectedJobId]);
 
   const handleToggleAll = () => {
     if (selectedCount === filtered.length && filtered.length > 0) {
@@ -62,23 +99,43 @@ export default function PM2Page() {
 
   const handleBulkStart = () => {
     if (selectedCount === 0) return;
-    bulk.mutate({ action: 'start', names: selectedNames });
+    bulk.mutate({ action: 'start', names: selectedNames }, {
+      onSuccess: (result) => {
+        const jobId = result?.data?.job?.id as string | undefined;
+        if (jobId) setSelectedJobId(jobId);
+      },
+    });
   };
 
   const handleBulkStop = () => {
     if (selectedCount === 0) return;
-    bulk.mutate({ action: 'stop', names: selectedNames });
+    bulk.mutate({ action: 'stop', names: selectedNames }, {
+      onSuccess: (result) => {
+        const jobId = result?.data?.job?.id as string | undefined;
+        if (jobId) setSelectedJobId(jobId);
+      },
+    });
   };
 
   const handleBulkRestart = () => {
     if (selectedCount === 0) return;
-    bulk.mutate({ action: 'restart', names: selectedNames });
+    bulk.mutate({ action: 'restart', names: selectedNames }, {
+      onSuccess: (result) => {
+        const jobId = result?.data?.job?.id as string | undefined;
+        if (jobId) setSelectedJobId(jobId);
+      },
+    });
   };
 
   const handleBulkDelete = () => {
     if (selectedCount === 0) return;
     if (confirm(`Delete ${selectedCount} processes?`)) {
-      bulk.mutate({ action: 'delete', names: selectedNames });
+      bulk.mutate({ action: 'delete', names: selectedNames }, {
+        onSuccess: (result) => {
+          const jobId = result?.data?.job?.id as string | undefined;
+          if (jobId) setSelectedJobId(jobId);
+        },
+      });
     }
   };
 
@@ -140,7 +197,12 @@ export default function PM2Page() {
           <div className="flex-1 flex items-center justify-end gap-1" onClick={e => e.stopPropagation()}>
             {p.status !== 'online' && !isPen && (
               <button
-                onClick={() => start.mutate(p.name)}
+                onClick={() => start.mutate(p.name, {
+                  onSuccess: (result) => {
+                    const jobId = result?.data?.job?.id as string | undefined;
+                    if (jobId) setSelectedJobId(jobId);
+                  },
+                })}
                 disabled={start.isPending}
                 className="p-1.5 rounded text-dark-400 hover:text-green-400 hover:bg-green-500/10 transition-colors"
                 title="Start"
@@ -150,7 +212,12 @@ export default function PM2Page() {
             )}
             {!isPen && (
               <button
-                onClick={() => restart.mutate(p.name)}
+                onClick={() => restart.mutate(p.name, {
+                  onSuccess: (result) => {
+                    const jobId = result?.data?.job?.id as string | undefined;
+                    if (jobId) setSelectedJobId(jobId);
+                  },
+                })}
                 disabled={restart.isPending}
                 className="p-1.5 rounded text-dark-400 hover:text-blue-400 hover:bg-blue-500/10 transition-colors"
                 title="Restart"
@@ -160,7 +227,12 @@ export default function PM2Page() {
             )}
             {!isPen && (
               <button
-                onClick={() => stop.mutate(p.name)}
+                onClick={() => stop.mutate(p.name, {
+                  onSuccess: (result) => {
+                    const jobId = result?.data?.job?.id as string | undefined;
+                    if (jobId) setSelectedJobId(jobId);
+                  },
+                })}
                 disabled={stop.isPending}
                 className="p-1.5 rounded text-dark-400 hover:text-yellow-400 hover:bg-yellow-500/10 transition-colors"
                 title="Stop"
@@ -170,7 +242,12 @@ export default function PM2Page() {
             )}
             {!isPen && (
               <button
-                onClick={() => { if (confirm(`Delete "${p.name}"?`)) deleteProcess.mutate(p.name); }}
+                onClick={() => { if (confirm(`Delete "${p.name}"?`)) deleteProcess.mutate(p.name, {
+                  onSuccess: (result) => {
+                    const jobId = result?.data?.job?.id as string | undefined;
+                    if (jobId) setSelectedJobId(jobId);
+                  },
+                }); }}
                 disabled={deleteProcess.isPending}
                 className="p-1.5 rounded text-dark-400 hover:text-red-400 hover:bg-red-500/10 transition-colors"
                 title="Delete"
@@ -221,7 +298,12 @@ export default function PM2Page() {
         <div className="flex items-center gap-2">
           {errored.length > 0 && (
             <button
-              onClick={() => restartErrored.mutate()}
+              onClick={() => restartErrored.mutate(undefined, {
+                onSuccess: (result) => {
+                  const jobId = result?.data?.job?.id as string | undefined;
+                  if (jobId) setSelectedJobId(jobId);
+                },
+              })}
               disabled={restartErrored.isPending}
               className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs text-yellow-400 bg-yellow-500/10 border border-yellow-500/20 hover:bg-yellow-500/20 transition-colors disabled:opacity-50"
             >
@@ -230,7 +312,12 @@ export default function PM2Page() {
             </button>
           )}
           <button
-            onClick={() => save.mutate()}
+            onClick={() => save.mutate(undefined, {
+              onSuccess: (result) => {
+                const jobId = result?.data?.job?.id as string | undefined;
+                if (jobId) setSelectedJobId(jobId);
+              },
+            })}
             disabled={save.isPending}
             className="btn-secondary flex items-center gap-1.5 text-xs disabled:opacity-50"
           >
@@ -257,6 +344,76 @@ export default function PM2Page() {
           onChange={e => setSearch(e.target.value)}
           className="input-field pl-9 text-sm w-full max-w-md"
         />
+      </div>
+
+      <div className="rounded-xl border border-dark-700 bg-dark-900 p-4">
+        <div className="mb-3 flex items-center gap-2 text-sm font-semibold text-dark-200">
+          <Activity size={14} className="text-primary-400" />
+          Recent PM2 Jobs
+        </div>
+        <div className="grid gap-4 lg:grid-cols-[320px_minmax(0,1fr)]">
+          <div className="space-y-2">
+            {pm2Jobs.map((job) => (
+              <button
+                key={job.id}
+                onClick={() => setSelectedJobId(job.id)}
+                className={`w-full rounded-xl border px-3 py-3 text-left ${
+                  selectedJobId === job.id
+                    ? 'border-primary-500/40 bg-primary-500/10'
+                    : 'border-dark-800 bg-dark-950 hover:bg-dark-800'
+                }`}
+              >
+                <div className="flex items-center justify-between gap-2 text-xs uppercase tracking-wide">
+                  <span className="text-dark-200">{job.type}</span>
+                  <span className={job.status === 'running' ? 'text-blue-400' : job.status === 'completed' ? 'text-green-400' : 'text-red-400'}>
+                    {job.status}
+                  </span>
+                </div>
+                <div className="mt-2 text-sm text-dark-400">
+                  {Array.isArray(job.meta?.names) ? job.meta.names.join(', ') : String(job.meta?.name || 'pm2 action')}
+                </div>
+                <div className="mt-1 text-[11px] text-dark-500">
+                  {formatDistanceToNow(new Date(job.startedAt), { addSuffix: true })}
+                </div>
+              </button>
+            ))}
+            {!pm2Jobs.length && (
+              <div className="rounded-xl border border-dark-800 bg-dark-950 px-3 py-6 text-center text-sm text-dark-500">
+                No PM2 jobs recorded yet.
+              </div>
+            )}
+          </div>
+          <div className="rounded-xl border border-dark-800 bg-dark-950 p-3">
+            {!selectedJob && (
+              <div className="py-8 text-center text-sm text-dark-500">
+                Select a PM2 job to inspect its output.
+              </div>
+            )}
+            {selectedJob && (
+              <div>
+                <div className="flex items-center justify-between gap-3 border-b border-dark-800 pb-3">
+                  <div>
+                    <div className="text-sm font-medium text-dark-100">{selectedJob.type}</div>
+                    <div className="mt-1 text-xs text-dark-500">
+                      {Array.isArray(selectedJob.meta?.names) ? selectedJob.meta.names.join(', ') : String(selectedJob.meta?.name || 'pm2 action')}
+                    </div>
+                  </div>
+                  <div className="text-xs text-dark-500">{selectedJob.status}</div>
+                </div>
+                <div className="mt-3 max-h-48 overflow-y-auto space-y-1 font-mono text-xs">
+                  {(selectedJob.output || []).map((line, index) => (
+                    <div key={`${selectedJob.id}-${index}`} className={line.isErr ? 'text-yellow-400/80' : 'text-dark-300'}>
+                      {line.text.trimEnd()}
+                    </div>
+                  ))}
+                  {!selectedJob.output?.length && (
+                    <div className="text-dark-500">No output captured for this job.</div>
+                  )}
+                </div>
+              </div>
+            )}
+          </div>
+        </div>
       </div>
 
       {/* Table Header */}

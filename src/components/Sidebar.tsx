@@ -19,6 +19,7 @@ const topNav = [
   { to: '/ai-assistant', icon: Bot, label: 'OpenClaw' },
   { to: '/ai-settings', icon: Settings, label: 'AI Settings' },
   { to: '/overview', icon: Activity, label: 'Overview' },
+  { to: '/operations', icon: Zap, label: 'Operations' },
   { to: '/health', icon: Activity, label: 'Health' },
   { to: '/pm2', icon: Server, label: 'Runtime Processes' },
   { to: '/monitor', icon: BarChart2, label: 'System Monitor' },

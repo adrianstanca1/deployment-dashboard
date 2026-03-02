@@ -16,6 +16,7 @@ import { useStore } from '@/store';
 
 // Lazy load pages for code splitting
 const Overview = lazy(() => import('@/pages/Overview'));
+const OperationsPage = lazy(() => import('@/pages/OperationsPage'));
 const CommandCenter = lazy(() => import('@/pages/CommandCenter'));
 const PM2Page = lazy(() => import('@/pages/PM2Page'));
 const GitHubPage = lazy(() => import('@/pages/GitHubPageEnhanced'));
@@ -214,6 +215,14 @@ function AppShell() {
             element={
               <ProtectedRoute>
                 <PageWrapper><Overview /></PageWrapper>
+              </ProtectedRoute>
+            }
+          />
+          <Route
+            path="/operations"
+            element={
+              <ProtectedRoute>
+                <PageWrapper><OperationsPage /></PageWrapper>
               </ProtectedRoute>
             }
           />

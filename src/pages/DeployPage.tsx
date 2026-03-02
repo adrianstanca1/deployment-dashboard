@@ -1,7 +1,9 @@
 import React, { useState, useRef, useEffect } from 'react';
-import { useQuery } from '@tanstack/react-query';
-import { Rocket, CheckCircle, XCircle, Loader2, ChevronDown, RefreshCw, Terminal } from 'lucide-react';
-import { githubAPI, serverAPI } from '@/api';
+import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
+import { Rocket, CheckCircle, XCircle, Loader2, ChevronDown, RefreshCw, Terminal, CircleSlash, History } from 'lucide-react';
+import { formatDistanceToNow } from 'date-fns';
+import { useSearchParams } from 'react-router-dom';
+import { deployAPI, githubAPI, serverAPI, type DeployJob } from '@/api';
 
 type StepStatus = 'pending' | 'running' | 'done' | 'error';
 
@@ -48,7 +50,16 @@ function StepRow({ step }: { step: Step }) {
   );
 }
 
+function deployTone(status?: DeployJob['status']) {
+  if (status === 'running') return 'text-blue-400';
+  if (status === 'completed') return 'text-green-400';
+  if (status === 'cancelled') return 'text-amber-400';
+  return 'text-red-400';
+}
+
 export default function DeployPage() {
+  const queryClient = useQueryClient();
+  const [searchParams] = useSearchParams();
   const [repo, setRepo] = useState('');
   const [branch, setBranch] = useState('main');
   const [pm2Name, setPm2Name] = useState('');
@@ -59,6 +70,8 @@ export default function DeployPage() {
   const [done, setDone] = useState<{ success: boolean; error?: string } | null>(null);
   const outputRef = useRef<HTMLDivElement>(null);
   const [customRepo, setCustomRepo] = useState('');
+  const [currentJobId, setCurrentJobId] = useState('');
+  const [selectedJobId, setSelectedJobId] = useState('');
 
   const { data: reposData } = useQuery({
     queryKey: ['github-repos'],
@@ -71,8 +84,51 @@ export default function DeployPage() {
     queryFn: serverAPI.getApps,
   });
 
+  const deployJobsQuery = useQuery({
+    queryKey: ['deploy-jobs'],
+    queryFn: async () => {
+      const response = await deployAPI.getJobs(12);
+      return response.data as DeployJob[];
+    },
+    refetchInterval: deploying || currentJobId ? 2000 : 10000,
+  });
+
+  const selectedJobQuery = useQuery({
+    queryKey: ['deploy-job', selectedJobId || currentJobId],
+    queryFn: async () => {
+      const response = await deployAPI.getJob(selectedJobId || currentJobId);
+      return response.data as DeployJob;
+    },
+    enabled: Boolean(selectedJobId || currentJobId),
+    refetchInterval: (query) => {
+      const job = query.state.data as DeployJob | undefined;
+      return job?.status === 'running' ? 1200 : false;
+    },
+  });
+
+  const cancelDeployMutation = useMutation({
+    mutationFn: async (jobId: string) => {
+      return deployAPI.cancelJob(jobId);
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['deploy-jobs'] });
+      queryClient.invalidateQueries({ queryKey: ['deploy-job', selectedJobId || currentJobId] });
+      setDone({ success: false, error: 'Deployment cancelled' });
+      setDeploying(false);
+    },
+  });
+
   const repos = reposData?.data ?? [];
   const existingApps = new Set(appsData?.data ?? []);
+  const deployJobs = deployJobsQuery.data || [];
+  const inspectedJob = selectedJobQuery.data || deployJobs.find((job) => job.id === selectedJobId || job.id === currentJobId) || null;
+
+  useEffect(() => {
+    const jobFromUrl = searchParams.get('job') || '';
+    if (jobFromUrl && jobFromUrl !== selectedJobId) {
+      setSelectedJobId(jobFromUrl);
+    }
+  }, [searchParams, selectedJobId]);
 
   // Auto-scroll output
   useEffect(() => {
@@ -88,6 +144,36 @@ export default function DeployPage() {
     }
   }, [repo]);
 
+  useEffect(() => {
+    const running = deployJobs.find((job) => job.status === 'running');
+    if (running && !currentJobId) {
+      setCurrentJobId(running.id);
+    }
+  }, [currentJobId, deployJobs]);
+
+  useEffect(() => {
+    if (!inspectedJob || deploying) return;
+    if (Array.isArray(inspectedJob.steps)) {
+      setSteps(inspectedJob.steps);
+    }
+    if (Array.isArray(inspectedJob.output)) {
+      setOutput(inspectedJob.output.map((line) => ({ text: line.text, isErr: line.isErr })));
+    }
+    if (inspectedJob.status === 'completed') {
+      setDone({ success: true });
+    } else if (inspectedJob.status === 'error' || inspectedJob.status === 'cancelled') {
+      setDone({ success: false, error: inspectedJob.error || inspectedJob.status });
+    }
+  }, [deploying, inspectedJob]);
+
+  useEffect(() => {
+    if (!currentJobId) return;
+    const activeJob = deployJobs.find((job) => job.id === currentJobId);
+    if (activeJob && activeJob.status !== 'running') {
+      setCurrentJobId('');
+    }
+  }, [currentJobId, deployJobs]);
+
   const startDeploy = async () => {
     const targetRepo = customRepo || repo;
     if (!targetRepo || !port) return;
@@ -96,6 +182,8 @@ export default function DeployPage() {
     setSteps([]);
     setOutput([]);
     setDone(null);
+    setCurrentJobId('');
+    setSelectedJobId('');
 
     try {
       const response = await fetch('/api/deploy/pipeline', {
@@ -135,7 +223,10 @@ export default function DeployPage() {
           const event = eventLine.slice(7).trim();
           const data = JSON.parse(dataLine.slice(5).trim());
 
-          if (event === 'step-start') {
+          if (event === 'job') {
+            setCurrentJobId(data.jobId);
+            queryClient.invalidateQueries({ queryKey: ['deploy-jobs'] });
+          } else if (event === 'step-start') {
             const label = STEP_LABELS[data.step] ?? data.step;
             setSteps(prev => {
               const exists = prev.find(s => s.id === data.step);
@@ -151,6 +242,10 @@ export default function DeployPage() {
           } else if (event === 'done') {
             setDone({ success: data.success, error: data.error });
             setDeploying(false);
+            queryClient.invalidateQueries({ queryKey: ['deploy-jobs'] });
+            if (data.jobId) {
+              queryClient.invalidateQueries({ queryKey: ['deploy-job', data.jobId] });
+            }
           }
         }
       }
@@ -165,6 +260,7 @@ export default function DeployPage() {
     setOutput([]);
     setDone(null);
     setDeploying(false);
+    setSelectedJobId('');
   };
 
   return (
@@ -174,10 +270,23 @@ export default function DeployPage() {
         <p className="text-sm text-dark-400 mt-0.5">Clone, install, build, and register apps with the runtime manager</p>
       </div>
 
-      <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
+      <div className="grid grid-cols-1 lg:grid-cols-[minmax(0,1fr)_320px] gap-6">
         {/* Config form */}
+        <div className="space-y-6">
         <div className="rounded-xl border border-dark-700 bg-dark-900 p-5 space-y-4">
-          <h2 className="text-sm font-semibold text-dark-200">Configuration</h2>
+          <div className="flex items-center justify-between gap-3">
+            <h2 className="text-sm font-semibold text-dark-200">Configuration</h2>
+            {currentJobId && deploying && (
+              <button
+                onClick={() => cancelDeployMutation.mutate(currentJobId)}
+                disabled={cancelDeployMutation.isPending}
+                className="inline-flex items-center gap-2 rounded-lg bg-red-500/12 px-3 py-2 text-xs text-red-300 disabled:opacity-50"
+              >
+                <CircleSlash size={13} />
+                Stop deploy
+              </button>
+            )}
+          </div>
 
           {/* Repo select */}
           <div>
@@ -293,6 +402,47 @@ export default function DeployPage() {
               {done.success ? `Deployed successfully on port ${port}` : `Error: ${done.error}`}
             </div>
           )}
+        </div>
+        </div>
+
+        <div className="rounded-xl border border-dark-700 bg-dark-900 p-5 space-y-3">
+          <div className="flex items-center gap-2 text-sm font-semibold text-dark-200">
+            <History size={14} className="text-primary-400" />
+            Recent Deploy Jobs
+          </div>
+          <div className="space-y-2">
+            {deployJobs.map((job) => (
+              <button
+                key={job.id}
+                onClick={() => {
+                  setSelectedJobId(job.id);
+                  setCurrentJobId(job.status === 'running' ? job.id : currentJobId);
+                  setDeploying(job.status === 'running');
+                }}
+                className={`w-full rounded-xl border px-3 py-3 text-left ${
+                  (selectedJobId || currentJobId) === job.id
+                    ? 'border-primary-500/40 bg-primary-500/10'
+                    : 'border-dark-800 bg-dark-950 hover:bg-dark-800'
+                }`}
+              >
+                <div className="flex items-center justify-between gap-2 text-xs uppercase tracking-wide">
+                  <span className="text-dark-200">{job.meta?.repo || 'deploy'}</span>
+                  <span className={deployTone(job.status)}>{job.status}</span>
+                </div>
+                <div className="mt-2 text-sm text-dark-400">
+                  {job.meta?.branch || 'main'} · {job.meta?.pm2Name || 'pm2'} · {job.meta?.port || 'n/a'}
+                </div>
+                <div className="mt-1 text-[11px] text-dark-500">
+                  {formatDistanceToNow(new Date(job.startedAt), { addSuffix: true })}
+                </div>
+              </button>
+            ))}
+            {!deployJobs.length && (
+              <div className="rounded-xl border border-dark-800 bg-dark-950 px-3 py-6 text-center text-sm text-dark-500">
+                No deployment jobs recorded yet.
+              </div>
+            )}
+          </div>
         </div>
       </div>
 

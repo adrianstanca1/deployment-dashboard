@@ -1,6 +1,7 @@
 import React, { useEffect, useMemo, useRef, useState } from 'react';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { formatDistanceToNow } from 'date-fns';
+import { useSearchParams } from 'react-router-dom';
 import {
   Activity,
   AlertTriangle,
@@ -199,6 +200,7 @@ function jobStatusTone(status?: OpenClawJob['status']) {
 
 export default function AIAssistant() {
   const queryClient = useQueryClient();
+  const [searchParams] = useSearchParams();
   const [agentFilter, setAgentFilter] = useState<string>('');
   const [sessionQuery, setSessionQuery] = useState('');
   const [selectedAgentId, setSelectedAgentId] = useState<string>('');
@@ -233,6 +235,14 @@ export default function AIAssistant() {
     activeJob?: OpenClawJob | null;
   } | null>(null);
   const activityEndRef = useRef<HTMLDivElement>(null);
+
+  useEffect(() => {
+    const jobFromUrl = searchParams.get('job') || '';
+    if (jobFromUrl && jobFromUrl !== activeJobId) {
+      setFollowLiveJob(false);
+      setActiveJobId(jobFromUrl);
+    }
+  }, [activeJobId, searchParams]);
 
   const overviewQuery = useQuery({
     queryKey: ['openclaw-overview'],

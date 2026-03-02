@@ -1,7 +1,9 @@
 import React from 'react';
 import { useQuery } from '@tanstack/react-query';
+import { formatDistanceToNow } from 'date-fns';
+import { useNavigate } from 'react-router-dom';
 import { Activity, CheckCircle, XCircle, AlertCircle, Github, Container, HardDrive, Cpu, MemoryStick, Globe, ExternalLink, Bot, Key } from 'lucide-react';
-import { pm2API, systemAPI, githubAPI, dockerAPI } from '@/api';
+import { pm2API, systemAPI, githubAPI, dockerAPI, operationsAPI, type UnifiedOperation } from '@/api';
 import StatsCard from '@/components/StatsCard';
 import StatusBadge from '@/components/StatusBadge';
 import DeploymentLink from '@/components/DeploymentLink';
@@ -10,6 +12,7 @@ import { usePreferences } from '@/hooks/usePreferences';
 
 export default function Overview() {
   const { prefs } = usePreferences();
+  const navigate = useNavigate();
 
   const authHeaders = () => {
     const token = localStorage.getItem('dashboard_token');
@@ -49,6 +52,15 @@ export default function Overview() {
     refetchInterval: prefs.muteAIAlerts ? false : 10000,
   });
 
+  const { data: operationsData, error: operationsError } = useQuery({
+    queryKey: ['overview-operations'],
+    queryFn: async () => {
+      const response = await operationsAPI.getRecent(12);
+      return response.data as UnifiedOperation[];
+    },
+    refetchInterval: 4000,
+  });
+
   const processes = pm2Data?.data ?? [];
   const online = processes.filter(p => p.status === 'online').length;
   const errored = processes.filter(p => p.status === 'errored').length;
@@ -64,6 +76,29 @@ export default function Overview() {
   const failingAI = aiProviders.filter((provider: any) => !provider.health?.healthy && provider.health?.status !== 'missing_credentials').length;
   const recentAudit = aiHealth?.audit ?? [];
   const criticalFailures = aiProviders.filter((provider: any) => !provider.health?.healthy && provider.health?.status !== 'missing_credentials');
+  const recentOperations = operationsData || [];
+
+  const openOperation = (operation: UnifiedOperation) => {
+    if (operation.source === 'openclaw') {
+      const jobId = operation.id.replace(/^openclaw-/, '');
+      navigate(`/ai-assistant?job=${encodeURIComponent(jobId)}`);
+      return;
+    }
+    if (operation.source === 'deploy') {
+      const jobId = operation.id.replace(/^deploy-/, '');
+      navigate(`/deploy?job=${encodeURIComponent(jobId)}`);
+      return;
+    }
+    if (operation.source === 'docker') {
+      const jobId = operation.id.replace(/^docker-/, '');
+      navigate(`/docker?job=${encodeURIComponent(jobId)}`);
+      return;
+    }
+    if (operation.source === 'pm2') {
+      const jobId = operation.id.replace(/^pm2-/, '');
+      navigate(`/pm2?job=${encodeURIComponent(jobId)}`);
+    }
+  };
 
   return (
     <div className="p-6 max-w-7xl mx-auto space-y-6">
@@ -250,6 +285,54 @@ export default function Overview() {
                 <p className="text-dark-500 text-xs">No recent AI credential or provider changes</p>
               )}
             </div>
+          </div>
+        </div>
+      </section>
+
+      <section>
+        <h2 className="text-xs font-semibold text-dark-500 uppercase tracking-wider mb-3">Unified Operations</h2>
+        <div className="rounded-xl border border-dark-700 bg-dark-900 p-4">
+          {operationsError && (
+            <div className="flex items-center gap-2 px-4 py-2 rounded-lg bg-red-500/10 border border-red-500/20 text-red-400 text-sm mb-3">
+              <AlertCircle size={14} />
+              Failed to load recent operations
+            </div>
+          )}
+          <div className="space-y-2">
+            {recentOperations.map((operation) => (
+              <button
+                key={operation.id}
+                onClick={() => openOperation(operation)}
+                className="block w-full rounded-lg border border-dark-800 bg-dark-950 px-3 py-3 text-left transition-colors hover:bg-dark-900"
+              >
+                <div className="flex items-center justify-between gap-3 text-xs uppercase tracking-wide">
+                  <div className="flex items-center gap-2">
+                    <span className="text-primary-400">{operation.source}</span>
+                    <span className="text-dark-500">{operation.type}</span>
+                  </div>
+                  <span className={
+                    operation.status === 'running'
+                      ? 'text-blue-400'
+                      : operation.status === 'completed'
+                      ? 'text-green-400'
+                      : operation.status === 'cancelled'
+                      ? 'text-amber-400'
+                      : 'text-red-400'
+                  }>
+                    {operation.status}
+                  </span>
+                </div>
+                <div className="mt-2 text-sm text-dark-200">{operation.detail || 'No detail available'}</div>
+                <div className="mt-1 text-[11px] text-dark-500">
+                  {formatDistanceToNow(new Date(operation.startedAt), { addSuffix: true })}
+                </div>
+              </button>
+            ))}
+            {!recentOperations.length && (
+              <div className="rounded-lg border border-dark-800 bg-dark-950 px-3 py-6 text-center text-sm text-dark-500">
+                No recent OpenClaw, deploy, or Docker operations recorded yet.
+              </div>
+            )}
           </div>
         </div>
       </section>

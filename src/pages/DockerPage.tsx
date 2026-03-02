@@ -1,14 +1,15 @@
 import React, { useState, useEffect, useRef, useCallback, useMemo } from 'react';
 import { wsUrl, formatBytes } from '@/utils';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
-import { useNavigate } from 'react-router-dom';
+import { useNavigate, useSearchParams } from 'react-router-dom';
+import { formatDistanceToNow } from 'date-fns';
 import {
   Container, Play, Square, RotateCw, Trash2, Search, Plus, Terminal,
   Download, HardDrive, Network, Info, X, ChevronRight, Layers,
   AlertTriangle, CheckCircle, Cpu, MemoryStick, Wifi, WifiOff,
   RefreshCw, Package, Settings, Zap, CheckSquare
 } from 'lucide-react';
-import { dockerAPI } from '@/api';
+import { dockerAPI, type DockerJob } from '@/api';
 import StatusBadge from '@/components/StatusBadge';
 import { useStore } from '@/store';
 import type { DockerContainer, DockerImage, DockerVolume, DockerNetwork } from '@/types';
@@ -362,12 +363,16 @@ function Field({ label, value, onChange, placeholder }: { label: string; value: 
 
 // ── Pull Image Modal ──────────────────────────────────────────────────────────
 
-function PullImageModal({ onClose, onSuccess }: { onClose: () => void; onSuccess: () => void }) {
+function PullImageModal({ onClose, onSuccess }: { onClose: () => void; onSuccess: (jobId?: string) => void }) {
   const [image, setImage] = useState('');
   const [lines, setLines] = useState<string[]>([]);
   const [done, setDone] = useState(false);
   const [pulling, setPulling] = useState(false);
+  const [jobId, setJobId] = useState('');
   const bottomRef = useRef<HTMLDivElement>(null);
+  const cancelMutation = useMutation({
+    mutationFn: async (id: string) => dockerAPI.cancelJob(id),
+  });
 
   const handlePull = async () => {
     if (!image.trim()) return;
@@ -404,10 +409,11 @@ function PullImageModal({ onClose, onSuccess }: { onClose: () => void; onSuccess
             if (line.startsWith('data: ')) {
               try {
                 const data = JSON.parse(line.slice(6));
+                if (event === 'start' && data.jobId) setJobId(data.jobId);
                 if (event === 'output') setLines(prev => [...prev, data.text.trim()].filter(Boolean));
                 if (event === 'done') {
                   setDone(true);
-                  if (data.success) onSuccess();
+                  if (data.success) onSuccess(data.jobId);
                 }
               } catch { /* ignore */ }
             }
@@ -449,6 +455,11 @@ function PullImageModal({ onClose, onSuccess }: { onClose: () => void; onSuccess
           <button onClick={handlePull} disabled={!image || pulling} className="btn-primary text-sm disabled:opacity-50">
             {pulling ? 'Pulling…' : 'Pull'}
           </button>
+          {pulling && jobId && (
+            <button onClick={() => cancelMutation.mutate(jobId)} disabled={cancelMutation.isPending} className="btn-secondary text-sm disabled:opacity-50">
+              Stop
+            </button>
+          )}
         </div>
         {lines.length > 0 && (
           <div className="bg-dark-950 rounded-lg p-3 max-h-48 overflow-y-auto font-mono text-xs text-dark-300 space-y-0.5">
@@ -472,6 +483,7 @@ type DockerTab = 'containers' | 'images' | 'volumes' | 'networks';
 export default function DockerPage() {
   const qc = useQueryClient();
   const navigate = useNavigate();
+  const [searchParams] = useSearchParams();
   const {
     dockerSelectedIds,
     dockerPendingIds,
@@ -492,6 +504,7 @@ export default function DockerPage() {
   const [showPull, setShowPull] = useState(false);
   const [filter, setFilter] = useState<'all' | 'running' | 'stopped'>('all');
   const [showConfirmDialog, setShowConfirmDialog] = useState<{ type: 'start' | 'stop' | 'remove'; ids: string[] } | null>(null);
+  const [selectedDockerJobId, setSelectedDockerJobId] = useState('');
 
   const { data: containersData, isLoading: cLoading } = useQuery({
     queryKey: ['docker-containers'],
@@ -518,15 +531,45 @@ export default function DockerPage() {
     queryFn: dockerAPI.getSystemDf,
     refetchInterval: 60000,
   });
+  const { data: dockerJobsData } = useQuery({
+    queryKey: ['docker-jobs'],
+    queryFn: async () => {
+      const response = await dockerAPI.getJobs(10);
+      return response.data as DockerJob[];
+    },
+    refetchInterval: 4000,
+  });
+  const { data: dockerJobData } = useQuery({
+    queryKey: ['docker-job', selectedDockerJobId],
+    queryFn: async () => {
+      const response = await dockerAPI.getJob(selectedDockerJobId);
+      return response.data as DockerJob;
+    },
+    enabled: Boolean(selectedDockerJobId),
+    refetchInterval: (query) => {
+      const job = query.state.data as DockerJob | undefined;
+      return job?.status === 'running' ? 1200 : false;
+    },
+  });
 
   const actionMut = useMutation({
     mutationFn: ({ act, id }: { act: string; id: string }) => dockerAPI.containerAction(act, id),
-    onSuccess: () => qc.invalidateQueries({ queryKey: ['docker-containers'] }),
+    onSuccess: (result) => {
+      qc.invalidateQueries({ queryKey: ['docker-containers'] });
+      qc.invalidateQueries({ queryKey: ['docker-jobs'] });
+      const jobId = result?.data?.job?.id as string | undefined;
+      if (jobId) setSelectedDockerJobId(jobId);
+    },
   });
 
   const removeMut = useMutation({
     mutationFn: (id: string) => dockerAPI.removeContainer(id),
-    onSuccess: () => qc.invalidateQueries({ queryKey: ['docker-containers'] }),
+    onSuccess: (result) => {
+      qc.invalidateQueries({ queryKey: ['docker-containers'] });
+      qc.invalidateQueries({ queryKey: ['docker-jobs'] });
+      const jobId = result?.data?.job?.id as string | undefined;
+      if (jobId) setSelectedDockerJobId(jobId);
+    },
   });
 
   const removeImageMut = useMutation({
@@ -541,11 +584,14 @@ export default function DockerPage() {
 
   const pruneMut = useMutation({
     mutationFn: (type: 'containers' | 'images' | 'volumes' | 'all') => dockerAPI.prune(type),
-    onSuccess: () => {
+    onSuccess: (result) => {
       qc.invalidateQueries({ queryKey: ['docker-containers'] });
       qc.invalidateQueries({ queryKey: ['docker-images'] });
       qc.invalidateQueries({ queryKey: ['docker-volumes'] });
       qc.invalidateQueries({ queryKey: ['docker-df'] });
+      qc.invalidateQueries({ queryKey: ['docker-jobs'] });
+      const jobId = result?.data?.job?.id as string | undefined;
+      if (jobId) setSelectedDockerJobId(jobId);
     },
   });
 
@@ -563,6 +609,10 @@ export default function DockerPage() {
     onSuccess: (results, ids) => {
       const succeeded = results.filter(r => r.status === 'fulfilled' && (r.value as { success: boolean }).success).length;
       const failed = ids.length - succeeded;
+      const latestJobId = [...results]
+        .reverse()
+        .find((r): r is PromiseFulfilledResult<{ data?: { job?: { id?: string } } }> => r.status === 'fulfilled')
+        ?.value?.data?.job?.id;
       if (succeeded > 0) {
         showToast(`Started ${succeeded} container${succeeded > 1 ? 's' : ''}`, 'success');
       }
@@ -570,6 +620,8 @@ export default function DockerPage() {
         showToast(`Failed to start ${failed} container${failed > 1 ? 's' : ''}`, 'error');
       }
       qc.invalidateQueries({ queryKey: ['docker-containers'] });
+      qc.invalidateQueries({ queryKey: ['docker-jobs'] });
+      if (latestJobId) setSelectedDockerJobId(latestJobId);
       clearDockerSelection();
     },
     onError: (_, ids) => {
@@ -594,6 +646,10 @@ export default function DockerPage() {
     onSuccess: (results, ids) => {
       const succeeded = results.filter(r => r.status === 'fulfilled' && (r.value as { success: boolean }).success).length;
       const failed = ids.length - succeeded;
+      const latestJobId = [...results]
+        .reverse()
+        .find((r): r is PromiseFulfilledResult<{ data?: { job?: { id?: string } } }> => r.status === 'fulfilled')
+        ?.value?.data?.job?.id;
       if (succeeded > 0) {
         showToast(`Stopped ${succeeded} container${succeeded > 1 ? 's' : ''}`, 'success');
       }
@@ -601,6 +657,8 @@ export default function DockerPage() {
         showToast(`Failed to stop ${failed} container${failed > 1 ? 's' : ''}`, 'error');
       }
       qc.invalidateQueries({ queryKey: ['docker-containers'] });
+      qc.invalidateQueries({ queryKey: ['docker-jobs'] });
+      if (latestJobId) setSelectedDockerJobId(latestJobId);
       clearDockerSelection();
     },
     onError: (_, ids) => {
@@ -625,6 +683,10 @@ export default function DockerPage() {
     onSuccess: (results, ids) => {
       const succeeded = results.filter(r => r.status === 'fulfilled' && (r.value as { success: boolean }).success).length;
       const failed = ids.length - succeeded;
+      const latestJobId = [...results]
+        .reverse()
+        .find((r): r is PromiseFulfilledResult<{ data?: { job?: { id?: string } } }> => r.status === 'fulfilled')
+        ?.value?.data?.job?.id;
       if (succeeded > 0) {
         showToast(`Removed ${succeeded} container${succeeded > 1 ? 's' : ''}`, 'success');
       }
@@ -632,6 +694,8 @@ export default function DockerPage() {
         showToast(`Failed to remove ${failed} container${failed > 1 ? 's' : ''}`, 'error');
       }
       qc.invalidateQueries({ queryKey: ['docker-containers'] });
+      qc.invalidateQueries({ queryKey: ['docker-jobs'] });
+      if (latestJobId) setSelectedDockerJobId(latestJobId);
       clearDockerSelection();
     },
     onError: (_, ids) => {
@@ -648,6 +712,15 @@ export default function DockerPage() {
   const volumes = volumesData?.data ?? [];
   const networks = networksData?.data ?? [];
   const df = dfData?.data ?? [];
+  const dockerJobs = dockerJobsData || [];
+  const selectedDockerJob = dockerJobData || dockerJobs.find((job) => job.id === selectedDockerJobId) || null;
+
+  useEffect(() => {
+    const jobFromUrl = searchParams.get('job') || '';
+    if (jobFromUrl && jobFromUrl !== selectedDockerJobId) {
+      setSelectedDockerJobId(jobFromUrl);
+    }
+  }, [searchParams, selectedDockerJobId]);
 
   const running = useMemo(() => containers.filter(c => c.status?.startsWith('Up')).length, [containers]);
   const stopped = useMemo(() => containers.length - running, [containers, running]);
@@ -708,6 +781,7 @@ export default function DockerPage() {
   const invalidate = () => {
     qc.invalidateQueries({ queryKey: ['docker-containers'] });
     qc.invalidateQueries({ queryKey: ['docker-images'] });
+    qc.invalidateQueries({ queryKey: ['docker-jobs'] });
   };
 
   const tabs: Array<{ id: DockerTab; label: string; icon: React.ElementType; count?: number }> = [
@@ -815,7 +889,73 @@ export default function DockerPage() {
         <div className="rounded-xl border border-dark-700 bg-dark-900 p-3 space-y-2">
           <div className="text-xs text-dark-400">Network Count</div>
           <div className="text-2xl font-bold text-dark-100">{networks.length}</div>
-          <div className="text-xs text-dark-500">{networks.map(net => net.Name).slice(0, 3).join(', ') || 'No networks yet'}</div>
+          <div className="text-xs text-dark-500">{networks.map(net => net.name).slice(0, 3).join(', ') || 'No networks yet'}</div>
+        </div>
+      </div>
+
+      <div className="mt-4 rounded-xl border border-dark-700 bg-dark-900 p-4">
+        <div className="mb-3 flex items-center gap-2 text-sm font-semibold text-dark-200">
+          <Package size={14} className="text-primary-400" />
+          Recent Docker Jobs
+        </div>
+        <div className="grid gap-4 lg:grid-cols-[320px_minmax(0,1fr)]">
+          <div className="space-y-2">
+            {dockerJobs.map((job) => (
+              <button
+                key={job.id}
+                onClick={() => setSelectedDockerJobId(job.id)}
+                className={`w-full rounded-xl border px-3 py-3 text-left ${
+                  selectedDockerJobId === job.id
+                    ? 'border-primary-500/40 bg-primary-500/10'
+                    : 'border-dark-800 bg-dark-950 hover:bg-dark-800'
+                }`}
+              >
+                <div className="flex items-center justify-between gap-2 text-xs uppercase tracking-wide">
+                  <span className="text-dark-200">{job.type}</span>
+                  <span className={job.status === 'running' ? 'text-blue-400' : job.status === 'completed' ? 'text-green-400' : job.status === 'cancelled' ? 'text-amber-400' : 'text-red-400'}>
+                    {job.status}
+                  </span>
+                </div>
+                <div className="mt-2 text-sm text-dark-400">{String(job.meta?.image || 'docker action')}</div>
+                <div className="mt-1 text-[11px] text-dark-500">
+                  {formatDistanceToNow(new Date(job.startedAt), { addSuffix: true })}
+                </div>
+              </button>
+            ))}
+            {!dockerJobs.length && (
+              <div className="rounded-xl border border-dark-800 bg-dark-950 px-3 py-6 text-center text-sm text-dark-500">
+                No Docker jobs recorded yet.
+              </div>
+            )}
+          </div>
+          <div className="rounded-xl border border-dark-800 bg-dark-950 p-3">
+            {!selectedDockerJob && (
+              <div className="py-8 text-center text-sm text-dark-500">
+                Select a Docker job to inspect its output.
+              </div>
+            )}
+            {selectedDockerJob && (
+              <div>
+                <div className="flex items-center justify-between gap-3 border-b border-dark-800 pb-3">
+                  <div>
+                    <div className="text-sm font-medium text-dark-100">{selectedDockerJob.type}</div>
+                    <div className="mt-1 text-xs text-dark-500">{String(selectedDockerJob.meta?.image || 'docker action')}</div>
+                  </div>
+                  <div className="text-xs text-dark-500">{selectedDockerJob.status}</div>
+                </div>
+                <div className="mt-3 max-h-48 overflow-y-auto space-y-1 font-mono text-xs">
+                  {(selectedDockerJob.output || []).map((line, index) => (
+                    <div key={`${selectedDockerJob.id}-${index}`} className={line.isErr ? 'text-yellow-400/80' : 'text-dark-300'}>
+                      {line.text.trimEnd()}
+                    </div>
+                  ))}
+                  {!selectedDockerJob.output?.length && (
+                    <div className="text-dark-500">No output captured for this job.</div>
+                  )}
+                </div>
+              </div>
+            )}
+          </div>
         </div>
       </div>
     </div>
@@ -1152,7 +1292,11 @@ export default function DockerPage() {
         </div>
       )}
       {showRun && <RunContainerModal onClose={() => setShowRun(false)} onSuccess={invalidate} />}
-      {showPull && <PullImageModal onClose={() => setShowPull(false)} onSuccess={() => qc.invalidateQueries({ queryKey: ['docker-images'] })} />}
+      {showPull && <PullImageModal onClose={() => setShowPull(false)} onSuccess={(jobId) => {
+        qc.invalidateQueries({ queryKey: ['docker-images'] });
+        qc.invalidateQueries({ queryKey: ['docker-jobs'] });
+        if (jobId) setSelectedDockerJobId(jobId);
+      }} />}
     </div>
   );
 }

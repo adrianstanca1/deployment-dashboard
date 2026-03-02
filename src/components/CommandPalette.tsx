@@ -4,7 +4,7 @@ import { useQueryClient } from '@tanstack/react-query';
 import {
   LayoutDashboard, Activity, Github, Container, ScrollText,
   FolderOpen, Terminal, Rocket, BarChart2, Search, RotateCw,
-  Square, Save, AlertCircle, Server, ChevronRight,
+  Square, Save, AlertCircle, Server, ChevronRight, Zap,
 } from 'lucide-react';
 import { pm2API, systemExecAPI } from '@/api';
 import type { PM2Process } from '@/types';
@@ -31,7 +31,10 @@ export default function CommandPalette({ isOpen, onClose, onNotify }: Props) {
   const navigate = useNavigate();
   const qc = useQueryClient();
 
-  const processes: PM2Process[] = (qc.getQueryData(['pm2-list']) as { data?: PM2Process[] } | undefined)?.data ?? [];
+  const pm2ListQuery = qc.getQueryData(['pm2-list']) as PM2Process[] | { data?: PM2Process[] } | undefined;
+  const processes: PM2Process[] = Array.isArray(pm2ListQuery)
+    ? pm2ListQuery
+    : pm2ListQuery?.data ?? [];
 
   const nav = (to: string) => { navigate(to); onClose(); };
 
@@ -48,6 +51,7 @@ export default function CommandPalette({ isOpen, onClose, onNotify }: Props) {
 
   const COMMANDS: Command[] = [
     { id: 'nav-overview', label: 'Overview', description: 'Dashboard overview', icon: <LayoutDashboard size={14}/>, group: 'Navigate', action: () => nav('/overview') },
+    { id: 'nav-operations', label: 'Operations', description: 'Unified live operations feed', icon: <Zap size={14}/>, group: 'Navigate', action: () => nav('/operations') },
     { id: 'nav-pm2', label: 'Runtime Processes', description: 'Manage PM2 processes', icon: <Activity size={14}/>, group: 'Navigate', action: () => nav('/pm2') },
     { id: 'nav-terminal', label: 'Terminal', description: 'Open shell terminal', icon: <Terminal size={14}/>, group: 'Navigate', action: () => nav('/terminal') },
     { id: 'nav-deploy', label: 'Deploy Manager', description: 'Deploy new apps', icon: <Rocket size={14}/>, group: 'Navigate', action: () => nav('/deploy') },
