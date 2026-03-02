@@ -9,7 +9,7 @@ export default function LoginPage() {
   const location = useLocation();
   const { login, isAuthenticated } = useAuth();
 
-  const [username, setUsername] = useState('');
+  const [username, setUsername] = useState(() => localStorage.getItem('dashboard_user') || 'admin');
   const [password, setPassword] = useState('');
   const [showPassword, setShowPassword] = useState(false);
   const [loading, setLoading] = useState(false);
@@ -135,7 +135,7 @@ export default function LoginPage() {
             {/* Submit */}
             <button
               type="submit"
-              disabled={loading || !username || !password}
+              disabled={loading || !username.trim() || !password}
               className="btn-primary w-full flex items-center justify-center gap-2 py-2.5 mt-1 disabled:opacity-50 disabled:cursor-not-allowed"
             >
               {loading ? (
