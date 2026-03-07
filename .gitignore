@@ -5,6 +5,10 @@ dist/
 .env
 .env.local
 
+# Lock files (project uses npm)
+pnpm-lock.yaml
+yarn.lock
+
 # Git worktrees
 .worktrees/
 
