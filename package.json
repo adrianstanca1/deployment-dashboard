@@ -43,6 +43,10 @@
     "postcss": "^8.4.32",
     "tailwindcss": "^4.3.3",
     "typescript": "^5.3.3",
+<<<<<<< HEAD
     "vite": "^8.1.5"
+=======
+    "vite": "^7.3.6"
+>>>>>>> 5a79944 (chore(deps): bump esbuild and vite)
   }
 }
